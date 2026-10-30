@@ -2,7 +2,7 @@
 // energy and cost, a home's place and tariff, support tickets and warranty claims, the SMS
 // fallback, countdown timers, commands with several parameters, shares, deleting the account.
 
-import { api, changed, loading, dialog, errorText, h, home, icon, lang, name, num, saved, t, toast, when } from "./core.js";
+import { api, changed, loading, viewsOf, dialog, errorText, h, home, icon, lang, name, num, saved, t, toast, when } from "./core.js";
 import { outButton, sectionCard, sectionDialog } from "./outputs.js";
 
 export const go = (route) => { location.hash = route; };
@@ -135,8 +135,7 @@ export function groupPage(state, groupId) {
     } catch (err) { fill(page, header("", "#/home"), h("p", {}, errorText(err))); return; }
     if (!group) { fill(page, header("", "#/home"), h("p", {}, t("groups.gone"))); return; }
     const members = devices.filter((d) => group.device_ids.includes(d.device_id));
-    const views = (await Promise.all(members.map((d) =>
-      api("GET", `/api/platform/my/devices/${d.device_id}/view`).catch(() => null)))).filter(Boolean);
+    const views = (await viewsOf(members)).filter(Boolean);
     const models = [...new Map(views.map((v) => [v.device.product_id, v.product])).entries()];
     const chips = [["all", t("groups.combined")],
       ...views.map((v) => [`device:${v.device.device_id}`, v.device.name]),

@@ -958,6 +958,48 @@ async def my_device_view(device_id: str, svc: ServicesDep, p: Viewer) -> DeviceV
         await _my_level(svc, p, device_id, "device.operate") in ("owner", "operator")
     owner = await svc.store.accounts.owner_org(None, device_id)
     labels = await svc.store.home.labels([owner], [device_id]) if owner else {}
+    rooms = await svc.store.accounts.rooms(await _my_orgs(svc, p), [device_id])
+    return _view(svc, record, product, template, level, operate, labels, rooms.get(device_id))
+
+
+@router.get("/my/views")
+async def my_device_views(svc: ServicesDep, p: Viewer, org: OrgQuery = None
+                          ) -> list[DeviceView]:
+    """The view of every device of the caller's homes (``org``: one home) in one answer: what
+    the home screen needs, without a request per device (the load test showed those requests
+    were most of a busy hub's work)."""
+    orgs = await _my_orgs(svc, p, org)
+    if not orgs:
+        return []
+    rows, _ = await svc.store.platform.devices(orgs, limit=500)
+    ids = [r.device_id for r in rows]
+    levels = await svc.store.accounts.access_levels(orgs, ids)
+    operate_orgs = {g.org_id for g in p.grants if g.org_id and "device.operate" in
+                    p.role_permissions.get(g.role_id, frozenset())} & orgs
+    operate = await svc.store.accounts.access_levels(operate_orgs, ids) if operate_orgs else {}
+    owners = await svc.store.accounts.owner_orgs(ids)
+    labels = await svc.store.home.labels(sorted(set(owners.values())), ids) if owners else {}
+    rooms = await svc.store.accounts.rooms(orgs, ids)
+    products: dict[Any, Any] = {}
+    out = []
+    for record in rows:
+        level = levels.get(record.device_id)
+        if level is None:                  # a maker's own stock is not "mine"
+            continue
+        if record.product_id not in products:
+            products[record.product_id] = await svc.store.platform.product(None,
+                                                                           record.product_id)
+        template = await svc.store.platform.template(record.product_id, record.version)
+        can = level in ("owner", "operator") and \
+            operate.get(record.device_id) in ("owner", "operator")
+        out.append(_view(svc, record, products[record.product_id], template, level, can,
+                         labels, rooms.get(record.device_id)))
+    return out
+
+
+def _view(svc: ServicesDep, record: Any, product: Any, template: Any, level: str,
+          operate: bool, labels: dict[tuple[str, str], Any], room: str | None) -> DeviceView:
+    device_id = record.device_id
     tags = []
     for t in sorted(template.tags, key=lambda t: (t.ui.order, t.key)):
         if not t.ui.visible:
@@ -976,11 +1018,10 @@ async def my_device_view(device_id: str, svc: ServicesDep, p: Viewer) -> DeviceV
             ui=t.ui.model_dump(exclude_none=True),
             value=sample.value if sample else None, ts=sample.timestamp if sample else None,
             quality=str(sample.quality) if sample else None))
-    rooms = await svc.store.accounts.rooms(await _my_orgs(svc, p), [device_id])
     live = svc.hub.drivers.get(device_id)
     return DeviceView(device=MyDevice.model_validate(record.model_dump() | {
         "state": str(live.status.state) if live is not None else record.state,
-        "access": level, "room": rooms.get(device_id), "product_name": product.name,
+        "access": level, "room": room, "product_name": product.name,
         "product_has_image": product.has_image}), product=product.name, tags=tags,
         commands=[CommandView(key=c.key, display_name=dict(c.display_name), icon=c.icon,
                               params=[prm.model_dump() for prm in c.params])

@@ -73,6 +73,10 @@ class Settings(BaseModel):
     api_docs: bool = True
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
+    # reverse proxies whose X-Forwarded-For is believed (addresses or CIDRs, comma-separated):
+    # behind Caddy every request would otherwise come from one address, and the per-address
+    # rate limit and network allowlist would treat all users as one
+    trusted_proxies: str = "127.0.0.1"
     db_timescale: str = "auto"
     timezone: str = "Asia/Tehran"
     # storage housekeeping (hub/maintenance.py)
@@ -155,6 +159,11 @@ class Settings(BaseModel):
     tcp_ingest_host: str = "0.0.0.0"  # nosec B104 - devices connect from the network
     tcp_ingest_port: int | None = Field(default=None, ge=0, le=65535)   # None: off
     tcp_ingest_insecure: bool = False           # plain TCP without TLS (development only)
+    # open connections at most (device TCP port / HTTP API): beyond, a new one is refused at
+    # once instead of the hub running out of sockets. None = the platform's safe default:
+    # 20000 / 10000 on Linux; on Windows select() watches 512 sockets for the whole hub.
+    tcp_ingest_max_connections: int | None = Field(default=None, ge=1, le=1_000_000)
+    http_max_connections: int | None = Field(default=None, ge=1, le=1_000_000)
     platform_broker: str | None = None          # broker_id in brokers.yaml for native devices
     platform_topic_prefix: str = ""
     platform_shared_group: str | None = None    # $share/<group>/ for several hub nodes
@@ -270,6 +279,7 @@ class Settings(BaseModel):
             api_docs=_bool(e.get("HUB_API_DOCS"), dev),
             host=e.get("HUB_HOST", "127.0.0.1"),
             port=int(e.get("HUB_PORT", 8000)),
+            trusted_proxies=e.get("HUB_TRUSTED_PROXIES", "127.0.0.1"),
             db_timescale=e.get("HUB_DB_TIMESCALE", "auto"),
             timezone=e.get("HUB_TIMEZONE", "Asia/Tehran"),
             retention_raw_days=int(e.get("HUB_RETENTION_RAW_DAYS", 365)),
@@ -340,6 +350,10 @@ class Settings(BaseModel):
             tcp_ingest_port=int(e["HUB_TCP_INGEST_PORT"]) if e.get("HUB_TCP_INGEST_PORT")
             else None,
             tcp_ingest_insecure=_bool(e.get("HUB_TCP_INGEST_INSECURE"), False),
+            tcp_ingest_max_connections=int(e["HUB_TCP_MAX_CONNECTIONS"])
+            if e.get("HUB_TCP_MAX_CONNECTIONS") else None,
+            http_max_connections=int(e["HUB_HTTP_MAX_CONNECTIONS"])
+            if e.get("HUB_HTTP_MAX_CONNECTIONS") else None,
             platform_broker=e.get("HUB_PLATFORM_BROKER") or None,
             platform_topic_prefix=e.get("HUB_PLATFORM_TOPIC_PREFIX", ""),
             platform_shared_group=e.get("HUB_PLATFORM_SHARED_GROUP") or None,

@@ -120,6 +120,15 @@ export const home = {
   query(prefix = "?") { return this.id ? `${prefix}org=${encodeURIComponent(this.id)}` : ""; },
 };
 
+/** The views of these devices (as /my/devices listed them) in one request, in the same order;
+ * null where a device has none. */
+export async function viewsOf(devices, query = home.query()) {
+  let all = [];
+  try { all = await api("GET", `/api/platform/my/views${query}`); } catch { return devices.map(() => null); }
+  const byId = new Map(all.map((v) => [v.device.device_id, v]));
+  return devices.map((d) => byId.get(d.device_id) || null);
+}
+
 export function icon(name, cls = "i") {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");

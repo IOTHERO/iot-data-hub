@@ -44,6 +44,19 @@ class NativeDeviceSim:
     sms_counter: int = 0                    # the last accepted message's counter (kept in flash)
     clock_offset_s: float = 0.0             # hub time - own time, from the rules' server_time
     local_log: list[dict[str, Any]] = field(default_factory=list)   # rules run while cut off
+    _outbox: asyncio.Queue[dict[str, Any]] | None = field(default=None, repr=False)
+
+    @property
+    def outbox(self) -> asyncio.Queue[dict[str, Any]]:
+        """Messages the device sends by itself (a changed input, a released momentary key)."""
+        if self._outbox is None:
+            self._outbox = asyncio.Queue()
+        return self._outbox
+
+    def report(self, **changes: Any) -> None:
+        """A value changed on the device (an input, a local rule): telemetry goes out now."""
+        self.values.update(changes)
+        self.outbox.put_nowait({"type": "telemetry", "values": dict(changes)})
 
     def telemetry(self) -> dict[str, Any]:
         return {"values": dict(self.values)}
@@ -138,6 +151,10 @@ class NativeDeviceSim:
         if any(c.get("command_id") == cid for c in self.executed):     # idempotent
             return [{"type": "ack", "command_id": cid, "status": "done"}]
         self.executed.append(command)
+        if command.get("pulse_s") and command.get("value") is True:   # momentary: release
+            tag = command["tag"]                                       # by itself, on time
+            asyncio.get_running_loop().call_later(float(command["pulse_s"]),
+                                                  lambda: self.report(**{tag: False}))
         out = [{"type": "ack", "command_id": cid, "status": "received"}]
         if self.ack_only:
             return out + [{"type": "ack", "command_id": cid, "status": "done"}]
@@ -167,6 +184,10 @@ class NativeDeviceSim:
                 for message in self.handle(command):
                     kind = message.pop("type")
                     await client.post(f"{base}/{kind}", headers=headers, json=message)
+            while not self.outbox.empty():
+                message = self.outbox.get_nowait()
+                kind = message.pop("type")
+                await client.post(f"{base}/{kind}", headers=headers, json=message)
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), period_s)
 
@@ -206,6 +227,11 @@ class NativeDeviceSim:
             await send({"type": "telemetry", **self.telemetry()})
             if ready is not None:
                 ready.set()
+
+            async def pump() -> None:
+                while True:
+                    await send(await self.outbox.get())
+            pumping = asyncio.create_task(pump())
             while line := await reader.readline():
                 message = json.loads(line)
                 if message.get("type") == "command":
@@ -215,6 +241,8 @@ class NativeDeviceSim:
                     self.receive(message)
             return answer
         finally:
+            if "pumping" in locals():
+                pumping.cancel()
             writer.close()
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
@@ -233,14 +261,24 @@ class NativeDeviceSim:
             await client.publish(f"{base}/telemetry", json.dumps(self.telemetry()), qos=1)
             if ready is not None:
                 ready.set()
-            async for message in client.messages:
-                command = json.loads(message.payload)
-                if str(message.topic).rsplit("/", 1)[-1] in ("rules", "config"):
-                    self.receive(command)
-                    continue
-                for reply in self.handle(command):
-                    kind = reply.pop("type")
-                    await client.publish(f"{base}/{kind}", json.dumps(reply), qos=1)
+
+            async def pump() -> None:
+                while True:
+                    message = await self.outbox.get()
+                    kind = message.pop("type")
+                    await client.publish(f"{base}/{kind}", json.dumps(message), qos=1)
+            pumping = asyncio.create_task(pump())
+            try:
+                async for message in client.messages:
+                    command = json.loads(message.payload)
+                    if str(message.topic).rsplit("/", 1)[-1] in ("rules", "config"):
+                        self.receive(command)
+                        continue
+                    for reply in self.handle(command):
+                        kind = reply.pop("type")
+                        await client.publish(f"{base}/{kind}", json.dumps(reply), qos=1)
+            finally:
+                pumping.cancel()
 
 
 def main(argv: list[str] | None = None) -> int:

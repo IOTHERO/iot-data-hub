@@ -6,7 +6,8 @@ Messages are the same JSON on every transport (docs/platform.md, phase 4)::
     telemetry  {"ts": "2026-10-27T10:00:00Z" | 1793000000000, "values": {"relay_1": true}}
     state      {"state": "online" | "offline"}
     command    {"command_id": "<uuid>", "tag": "relay_1", "value": true,
-                "expires_at": "<iso>"}                                   (hub -> device)
+                "expires_at": "<iso>", "pulse_s": 1.5}                   (hub -> device)
+               (``pulse_s``, momentary keys only: set it, then back to false after that long)
     ack        {"command_id": "<uuid>", "status": "received" | "done" | "failed",
                 "value": <value now>, "error": "..."}                    (device -> hub)
 
@@ -197,8 +198,11 @@ class NativeDriver(Driver[NativeDevice]):
         self._pending[grant.request_id] = name
         if len(self._pending) > 1000:
             self._pending.pop(next(iter(self._pending)))
-        self.last_transport = await self.channel.send(self.device, {
-            "command_id": grant.request_id, "tag": name, "value": grant.raw_value})
+        command: dict[str, Any] = {"command_id": grant.request_id, "tag": name,
+                                   "value": grant.raw_value}
+        if grant.pulse_s:                 # the device releases it itself (a hub restart or a
+            command["pulse_s"] = grant.pulse_s     # lost connection never leaves it on)
+        self.last_transport = await self.channel.send(self.device, command)
 
     async def _write_raw(self, tag: TagBase, raw: Value) -> None:   # pragma: no cover
         raise DriverError("native devices are written through write_tag")

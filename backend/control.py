@@ -135,7 +135,8 @@ class ControlService:
     # --- requests -----------------------------------------------------------------------------
 
     async def request_write(self, principal: Principal, tag_path: str, value: Any,
-                            reason: str | None, client_addr: str | None) -> WriteResult:
+                            reason: str | None, client_addr: str | None, *,
+                            pulse_s: float | None = None) -> WriteResult:
         tag = self.tag_for(tag_path)
         request_id = uuid.uuid4()
         policy = self.control.policy_for(tag_path)
@@ -167,7 +168,8 @@ class ControlService:
                                result="requested", requested_value=value, expires_at=expires,
                                message="waiting for confirmation by a second user")
         return await self._execute(request_id, principal.user_id, principal.username,
-                                   client_addr, tag_path, tag, value, raw, policy, None)
+                                   client_addr, tag_path, tag, value, raw, policy, None,
+                                   pulse_s=pulse_s)
 
     async def confirm(self, principal: Principal, request_id: UUID,
                       client_addr: str | None) -> WriteResult:
@@ -306,7 +308,8 @@ class ControlService:
 
     async def _execute(self, request_id: UUID, user_id: int, username: str,
                        client_addr: str | None, tag_path: str, tag: TagBase, value: Any,
-                       raw: Any, policy: ControlPolicy, confirmed_by: int | None) -> WriteResult:
+                       raw: Any, policy: ControlPolicy, confirmed_by: int | None, *,
+                       pulse_s: float | None = None) -> WriteResult:
         lock = self._locks.setdefault(tag_path, asyncio.Lock())
         async with lock:
             try:
@@ -331,7 +334,8 @@ class ControlService:
                 readback_task = asyncio.create_task(driver.read_back(tag.name, wait_s))
                 await asyncio.sleep(0)
             self._last_write[tag_path] = self.clock()
-            grant = WriteGrant(request_id=str(request_id), tag_path=tag_path, raw_value=raw)
+            grant = WriteGrant(request_id=str(request_id), tag_path=tag_path, raw_value=raw,
+                               pulse_s=pulse_s if raw is True else None)
             try:
                 await asyncio.wait_for(driver.write_tag(tag.name, grant), self.io_timeout_s)
             except TimeoutError:

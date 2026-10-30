@@ -101,6 +101,10 @@ async def test_homes_settings_groups_timers(backend: Backend) -> None:
     relay = next(t for t in view["tags"] if t["key"] == "relay_1")
     assert relay["display_name"]["fa"] == "لوستر بزرگ" and relay["favorite"] is True
     assert relay["icon"] == "bulb" and relay["default_name"]["fa"]
+    # every view at once (the home screen) is the same as one at a time
+    views = (await b.client.get("/api/platform/my/views", headers=sara)).json()
+    assert [v["device"]["device_id"] for v in views] == [device_id] and views[0] == view
+    assert (await b.client.get("/api/platform/my/views", headers=omid)).json() == []
     await b.client.put(f"{label}/relay_1", headers=sara, json={})          # back to the maker's
     view = (await b.client.get(f"/api/platform/my/devices/{device_id}/view", headers=sara)).json()
     relay = next(t for t in view["tags"] if t["key"] == "relay_1")

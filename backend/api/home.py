@@ -274,7 +274,8 @@ async def pulse(device_id: str, body: PulseIn, svc: ServicesDep, p: Viewer) -> d
     if await _my_level(svc, p, device_id, "device.operate") not in ("owner", "operator"):
         raise NotFound("device not found")
     path = f"platform.devices.{device_id}.{body.tag}"
-    result = await svc.control.request_write(p, path, True, "app: momentary", None)
+    result = await svc.control.request_write(p, path, True, "app: momentary", None,
+                                             pulse_s=body.seconds)
     if result.result != "applied":
         return {"result": result.result, "message": result.message}
 

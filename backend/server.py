@@ -106,7 +106,10 @@ async def serve(settings: Settings) -> int:
                         "proxy in front", settings.host)
         config = uvicorn.Config(create_app(services), host=settings.host, port=settings.port,
                                 loop="none", lifespan="off", log_level="info",
-                                proxy_headers=True, ws="websockets-sansio", **tls)
+                                proxy_headers=True, forwarded_allow_ips=settings.trusted_proxies,
+                                limit_concurrency=settings.http_max_connections or (
+                                    300 if sys.platform == "win32" else 10_000),
+                                ws="websockets-sansio", **tls)
         await uvicorn.Server(config).serve()
     finally:
         if ha is not None:

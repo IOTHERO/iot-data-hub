@@ -328,6 +328,7 @@ async def add_holiday(org_id: str, body: HolidayIn, svc: ServicesDep, p: Manager
             _orgs(p, "automation.manage", org_id), org_id, day, body.name, p.user_id)
     except PlatformError as exc:
         raise _nf(exc) from None
+    svc.automations.forget_holidays()   # every home may see hub-wide holidays
     await svc.store.add_auth_audit("holiday_saved", p.username, user_id=p.user_id,
                                    client_addr=client_addr(request),
                                    detail={"org_id": org_id, "date": body.date})

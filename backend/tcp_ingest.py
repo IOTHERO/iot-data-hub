@@ -22,6 +22,7 @@ import contextlib
 import json
 import logging
 import ssl
+import sys
 from typing import Any
 
 from backend.ingest import DeviceAuthError, Ingest
@@ -33,12 +34,15 @@ AUTH_TIMEOUT_S = 10.0
 
 class TcpIngest:
     def __init__(self, ingest: Ingest, host: str, port: int,
-                 ssl_context: ssl.SSLContext | None) -> None:
+                 ssl_context: ssl.SSLContext | None, max_connections: int | None = None) -> None:
         self.ingest = ingest
         self.host, self.port = host, port
         self.ssl_context = ssl_context
         self.server: asyncio.Server | None = None
         self.sessions = 0
+        self.max_connections = max_connections or (400 if sys.platform == "win32" else 20_000)
+        self.open = 0                 # connections now, signed in or not
+        self.refused = 0
 
     @classmethod
     def from_settings(cls, ingest: Ingest, settings: Any) -> TcpIngest | None:
@@ -52,7 +56,8 @@ class TcpIngest:
         elif not settings.tcp_ingest_insecure:
             raise RuntimeError("HUB_TCP_INGEST_PORT needs TLS (HUB_TLS_CERT / HUB_TLS_KEY), or "
                                "HUB_TCP_INGEST_INSECURE=true for development")
-        return cls(ingest, settings.tcp_ingest_host, settings.tcp_ingest_port, context)
+        return cls(ingest, settings.tcp_ingest_host, settings.tcp_ingest_port, context,
+                   settings.tcp_ingest_max_connections)
 
     async def start(self) -> None:
         self.server = await asyncio.start_server(self._session, self.host, self.port,
@@ -69,6 +74,20 @@ class TcpIngest:
             self.server = None
 
     async def _session(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        if self.open >= self.max_connections:       # full: refuse now, the device retries later
+            self.refused += 1
+            if self.refused % 100 == 1:
+                log.warning("TCP device port full (%d connections): refusing new ones",
+                            self.open)
+            writer.close()
+            return
+        self.open += 1
+        try:
+            await self._serve(reader, writer)
+        finally:
+            self.open -= 1
+
+    async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
         addr = peer[0] if isinstance(peer, tuple) else None
         lock = asyncio.Lock()

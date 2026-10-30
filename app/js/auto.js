@@ -1,7 +1,7 @@
 // Scenes and automations of a home (platform phase 6): run, switch on/off, build and edit,
 // with the Persian calendar (weekdays from Saturday, Jalali dates, holidays).
 
-import { api, dialog, errorText, h, home, icon, name, num, SCENE_ICONS, SCENE_TONE, t,
+import { api, dialog, errorText, h, home, icon, name, num, SCENE_ICONS, SCENE_TONE, t, viewsOf,
   toast } from "./core.js";
 import { homes } from "./views.js";
 
@@ -16,9 +16,7 @@ async function homeOrg() {
 
 async function catalog() {          // the home's devices with their tags (for the builders)
   const devices = await api("GET", `/api/platform/my/devices${home.query()}`);
-  const views = await Promise.all(devices.map((d) =>
-    api("GET", `/api/platform/my/devices/${d.device_id}/view`).catch(() => null)));
-  return views.filter(Boolean);
+  return (await viewsOf(devices)).filter(Boolean);
 }
 
 function tagOf(views, deviceId, key) {

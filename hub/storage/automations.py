@@ -193,6 +193,14 @@ class AutomationStore:
                 "UPDATE automation_runs SET status=%s, detail=%s, finished_at=now() "
                 "WHERE run_id=%s", (status, Jsonb(detail), run_id))
 
+    async def interrupted_runs(self) -> list[dict[str, Any]]:
+        """Runs a restart cut off (still "running"): run_id, automation_id, started_at."""
+        async with self._tx(None) as conn:
+            rows = await (await conn.execute(
+                "SELECT run_id, automation_id, started_at FROM automation_runs "
+                "WHERE status='running' ORDER BY started_at")).fetchall()
+        return [dict(r) for r in rows]
+
     async def set_fired(self, automation_id: int, at: datetime) -> None:
         async with self._tx(None) as conn:
             await conn.execute(

@@ -385,6 +385,16 @@ class AccountStore:
             row = await (await conn.execute(sql, (device_id,))).fetchone()
         return row["org_id"] if row else None
 
+    async def owner_orgs(self, device_ids: list[str]) -> dict[str, str]:
+        """Service: device id -> its owner organization (one query for a home screen)."""
+        if not device_ids:
+            return {}
+        async with self._conn() as conn:
+            rows = await (await conn.execute(
+                "SELECT device_id, org_id FROM device_access WHERE device_id = ANY(%s) AND "
+                "level='owner' AND revoked_at IS NULL", (device_ids,))).fetchall()
+        return {r["device_id"]: r["org_id"] for r in rows}
+
     async def shares(self, orgs: set[str] | None, device_id: str) -> list[ShareRecord]:
         """Active shares of a device the caller owns (the owner row excluded)."""
         async with self._conn() as conn, conn.transaction():

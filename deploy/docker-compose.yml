@@ -30,6 +30,7 @@ services:
       HUB_DATABASE_URL: postgresql://hub_app:${DB_PASSWORD}@db:5432/hub
       HUB_PLATFORM_BROKER: platform
       HUB_TCP_INGEST_PORT: "7000"
+      HUB_TRUSTED_PROXIES: "172.30.0.0/24"            # Caddy on the edge network (below)
     volumes:
       - ./config:/srv/hub/config                     # brokers.yaml (platform broker), YAML devices
       - hub-spool:/srv/hub/spool
@@ -75,4 +76,5 @@ volumes:
 
 networks:
   backend: {internal: true}                          # db and broker hooks: no internet route
-  edge: {}
+  edge:                                              # a fixed range: the hub trusts Caddy's
+    ipam: {config: [{subnet: 172.30.0.0/24}]}        # X-Forwarded-For from it only

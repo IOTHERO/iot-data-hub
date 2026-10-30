@@ -343,13 +343,56 @@ class AutomationEngine:
         self._running: dict[int, asyncio.Task[Any]] = {}
         self._edges: dict[int, tuple[bool, datetime, bool]] = {}   # true?, since, fired
         self._recent: dict[str, tuple[int, datetime, int]] = {}    # tag -> prio, time, id
+        self._holidays: dict[tuple[str, date, date], tuple[float, set[date]]] = {}
+        self.resume_delay_s = 20.0           # after a restart, before cut-off cycles go on
 
     @property
     def store(self) -> Any:
         return self.svc.store.automations
 
     async def start(self) -> None:
+        with contextlib.suppress(Exception):     # never keeps the hub from starting
+            await self.resume()
         self._task = asyncio.create_task(self._loop(), name="automations")
+
+    async def resume(self) -> int:
+        """After a restart: runs that were cut off are closed as failed; a repeating timer
+        (cycle) continues with the cycles it had left, so a pump or a fountain does not stop,
+        and never stays on, because the hub restarted. Returns how many cycles resumed."""
+        now = self.clock()
+        resumed = 0
+        for run in await self.store.interrupted_runs():
+            await self.store.finish_run(run["run_id"], "failed", [
+                {"result": "failed", "message": "interrupted by a restart of the hub"}])
+            try:
+                record = await self.store.automation(None, run["automation_id"])
+                spec = AutomationIn.from_record(record)
+            except Exception:  # noqa: BLE001 - deleted meanwhile, or an old definition
+                continue
+            cycles = [a for a in spec.actions if isinstance(a, CycleAction)]
+            if not cycles or not record.enabled:
+                continue
+            c = cycles[0]
+            done = int((now - run["started_at"]).total_seconds() // (c.on_s + c.off_s))
+            left = 0 if c.count == 0 else c.count - done
+            if c.count and left <= 0:
+                creator = await self._creator(record.created_by)
+                if creator is not None:          # it would have ended: leave it off
+                    await self._write(record, None, WriteAction(
+                        type="write", device_id=c.device_id, tag=c.tag, value=c.off_value),
+                        creator, False, f"automation:{record.automation_id} resume")
+                if spec.timer:
+                    await self.store.delete_automation(None, record.org_id,
+                                                       record.automation_id)
+                continue
+            rest = spec.model_copy(update={"actions": [c.model_copy(update={"count": left})]})
+            # a moment for the devices to sign in again after the restart
+            asyncio.get_running_loop().call_later(self.resume_delay_s, self.launch, record, rest,
+                                                  f"resume:{run['run_id']}")
+            resumed += 1
+        if resumed:
+            log.info("resumed %d repeating timers after a restart", resumed)
+        return resumed
 
     async def stop(self) -> None:
         if self._task is not None:
@@ -388,7 +431,23 @@ class AutomationEngine:
             log.info("issued %d monthly invoices", made)
 
     async def holidays(self, org_id: str, start: date, end: date) -> set[date]:
-        return {h.day for h in await self.store.holidays(None, org_id, start, end)}
+        """The home's and the hub's holidays in [start, end], kept for a minute: every time
+        automation asks each tick, and thousands of them must not mean thousands of queries."""
+        key = (org_id, start, end)
+        now = asyncio.get_running_loop().time()
+        hit = self._holidays.get(key)
+        if hit is not None and now - hit[0] < 60:
+            return hit[1]
+        days = {h.day for h in await self.store.holidays(None, org_id, start, end)}
+        if len(self._holidays) > 20_000:
+            self._holidays.clear()
+        self._holidays[key] = (now, days)
+        return days
+
+    def forget_holidays(self, org_id: str | None = None) -> None:
+        """A holiday was added or removed: the next tick reads them again."""
+        self._holidays = {k: v for k, v in self._holidays.items()
+                          if org_id is not None and k[0] != org_id}
 
     async def tick(self) -> None:
         now = self.clock()

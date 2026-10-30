@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import uuid
 from collections import deque
 from collections.abc import Callable, Mapping
@@ -379,15 +380,31 @@ class AuthService:
             raise Unauthorized("user disabled", code="invalid_token")
         if self._idle(session.last_seen_at, now):
             await self._expire_idle(session_id, user.username, user_id)
-        if touch:
+        # the store writes it at most once a minute anyway: no query when it is that recent
+        if touch and (session.last_seen_at is None or
+                      (now - session.last_seen_at).total_seconds() >= 60):
             await self.store.touch_session(session_id, now)
         grants = tuple(await self.store.grants(user_id))
         required = set(self.settings.mfa_required_roles)
         mfa_missing = bool(required) and not user.totp_enabled and any(
             g.role_id in required for g in grants)
         return Principal(user=user, session_id=session_id, grants=grants,
-                         role_permissions=await self.store.role_permissions(),
+                         role_permissions=await self.role_permissions(),
                          mfa_missing=mfa_missing, site_orgs=self.site_orgs())
+
+    async def role_permissions(self) -> dict[str, frozenset[str]]:
+        """What each role may do, read again every 10 s (not on every request): a changed
+        role takes effect for everyone within 10 s. A person's own roles (grants), their
+        session and their account are still read on every request."""
+        now = time.monotonic()
+        cached = getattr(self, "_roles", None)
+        if cached is None or now - cached[0] > 10:
+            cached = (now, await self.store.role_permissions())
+            self._roles = cached
+        return cached[1]
+
+    def forget_roles(self) -> None:
+        self._roles = None
 
     # --- MFA enrolment ------------------------------------------------------------------------
 

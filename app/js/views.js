@@ -4,7 +4,7 @@ import { commandsSection, deleteAccount, groupsRow, newHome, sharesList, smsSect
   timersSection } from "./more.js";
 import { favoritesRow, outButton, sensorRow, smsSheet } from "./outputs.js";
 import { climateCard, climateKeys, climateSets } from "./climate.js";
-import { api, changed, loading, dialog, errorText, h, home, icon, imageUrl, lang, loadLanguage, logout, name, num,
+import { api, changed, loading, viewsOf, dialog, errorText, h, home, icon, imageUrl, lang, loadLanguage, logout, name, num,
   saved, SCENE_TONE, session, setAccent, t, toast, when } from "./core.js";
 
 export const go = (route) => { location.hash = route; };
@@ -264,8 +264,7 @@ export function home_(state) {
       : t("home.every"), icon("chevron"));
     homeBtn.onclick = async () => { await pickHome(homeList); draw(); };
     const [views, summary, notes, sceneRows] = await Promise.all([
-      Promise.all(devices.slice(0, 60).map((d) =>
-        api("GET", `/api/platform/my/devices/${d.device_id}/view`).catch(() => null))),
+      viewsOf(devices, q),
       api("GET", `/api/platform/my/summary${q}`).catch(() => null),
       api("GET", `/api/platform/my/notifications${q}`).catch(() => []),
       sceneOrg(homeList).then((org) => (org ? api("GET", `/api/platform/organizations/${org}/scenes`)

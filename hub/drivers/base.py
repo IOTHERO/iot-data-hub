@@ -88,6 +88,7 @@ class WriteGrant:
     request_id: str
     tag_path: str
     raw_value: Value
+    pulse_s: float | None = None     # a momentary write: the device itself turns it back off
 
 
 @dataclass

@@ -60,12 +60,6 @@ _UI_CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'se
            "form-action 'self'; frame-ancestors 'none'")
 
 
-def _ui_csp(request: Request) -> str:
-    host = request.headers.get("host", "")
-    scheme = "wss" if request.url.scheme == "https" else "ws"
-    return _UI_CSP.format(ws=f"{scheme}://{host}" if host else "")
-
-
 API_VERSION = "1"
 SUPPORTED_VERSIONS = ("1",)
 _VERSIONED = re.compile(r"^/api/v(\d+)(/.*)?$")
@@ -117,6 +111,73 @@ class BodyLimit:
                     "headers": [(b"content-type", b"application/json"),
                                 (b"content-length", str(len(body)).encode())]})
         await send({"type": "http.response.body", "body": body})
+
+
+class Guards:
+    """Network allowlist, rate limit and HA standby in front of the API, and the security
+    headers on every answer. Plain ASGI (not BaseHTTPMiddleware): no extra task and no copy of
+    the body per request, which the load test showed cost more than the requests themselves."""
+
+    _OPEN = ("/api/health", "/api/docs", "/api/openapi.json")
+
+    def __init__(self, app: Any, services: Services, allowlist: NetworkAllowlist,
+                 limiter: RateLimiter) -> None:
+        self.app, self.services = app, services
+        self.allowlist, self.limiter = allowlist, limiter
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope["path"]
+        client = scope.get("client")
+        addr = client[0] if client else None
+        guarded = path.startswith("/api/") or path == "/metrics"
+        refusal: tuple[int, dict[str, Any], dict[str, str]] | None = None
+        if guarded and path != "/api/health" and not self.allowlist.allows(addr):
+            log.warning("request from %s refused: not in HUB_ALLOWED_NETWORKS", addr)
+            refusal = (403, {"error": "network_not_allowed",
+                             "message": "this address may not use the hub"}, {})
+        elif guarded and path != "/api/health" and (wait := self.limiter.check(addr or "-")):
+            refusal = (429, {"error": "rate_limited", "message": "too many requests",
+                             "retry_after_s": wait}, {"Retry-After": str(wait)})
+        elif (self.services.role != "active" and path.startswith("/api/")
+              and path not in self._OPEN):
+            # HA standby: no data, no logins, no writes; the load balancer uses the other node
+            refusal = (503, {"error": "standby", "message": f"node is {self.services.role}"},
+                       {})
+        extra = [(k.lower().encode(), v.encode()) for k, v in _SECURITY_HEADERS.items()]
+        ui = not guarded and not path.startswith("/api/")
+        # API answers are never cached; dashboard files are revalidated (ETag) on every load
+        extra.append((b"cache-control", b"no-cache" if ui else b"no-store"))
+        if ui:
+            extra.append((b"content-security-policy", _ui_csp_scope(scope).encode()))
+        elif not path.startswith("/api/docs"):  # Swagger UI needs its scripts
+            extra.append((b"content-security-policy",
+                          b"default-src 'none'; frame-ancestors 'none'"))
+        if self.services.settings.tls:
+            extra.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains"))
+
+        async def send_with_headers(message: dict[str, Any]) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                present = {k.lower() for k, _ in headers}
+                headers += [(k, v) for k, v in extra if k not in present]
+                message = dict(message, headers=headers)
+            await send(message)
+
+        if refusal is not None:
+            status, body, headers = refusal
+            await JSONResponse(body, status_code=status, headers=headers)(
+                scope, receive, send_with_headers)
+            return
+        await self.app(scope, receive, send_with_headers)
+
+
+def _ui_csp_scope(scope: dict[str, Any]) -> str:
+    host = next((v.decode("latin-1") for k, v in scope.get("headers") or [] if k == b"host"), "")
+    ws = "wss" if scope.get("scheme") == "https" else "ws"
+    return _UI_CSP.format(ws=f"{ws}://{host}" if host else "")
 
 
 class _TooLarge(Exception):
@@ -183,41 +244,7 @@ def create_app(services: Services) -> FastAPI:
     limiter = RateLimiter(services.settings.rate_limit_per_min)
     app.state.limiter = limiter
 
-    @app.middleware("http")
-    async def guards(request: Request, call_next):  # type: ignore[no-untyped-def]
-        path = request.url.path
-        addr = request.client.host if request.client else None
-        guarded = path.startswith("/api/") or path == "/metrics"
-        if guarded and path != "/api/health" and not allowlist.allows(addr):
-            log.warning("request from %s refused: not in HUB_ALLOWED_NETWORKS", addr)
-            response: Any = JSONResponse({"error": "network_not_allowed",
-                                          "message": "this address may not use the hub"},
-                                         status_code=403)
-        elif guarded and path != "/api/health" and (wait := limiter.check(addr or "-")):
-            response = JSONResponse({"error": "rate_limited",
-                                     "message": "too many requests", "retry_after_s": wait},
-                                    status_code=429, headers={"Retry-After": str(wait)})
-        elif (services.role != "active" and path.startswith("/api/")
-              and path not in ("/api/health", "/api/docs", "/api/openapi.json")):
-            # HA standby: no data, no logins, no writes; the load balancer uses the other node
-            response = JSONResponse({"error": "standby", "message": f"node is {services.role}"},
-                                    status_code=503)
-        else:
-            response = await call_next(request)
-        for key, value in _SECURITY_HEADERS.items():
-            response.headers.setdefault(key, value)
-        ui = not guarded and not path.startswith("/api/")
-        # API answers are never cached; dashboard files are revalidated (ETag) on every load
-        response.headers.setdefault("Cache-Control", "no-cache" if ui else "no-store")
-        if ui:
-            response.headers.setdefault("Content-Security-Policy", _ui_csp(request))
-        elif not path.startswith("/api/docs"):  # Swagger UI needs its scripts
-            response.headers.setdefault("Content-Security-Policy",
-                                        "default-src 'none'; frame-ancestors 'none'")
-        if services.settings.tls:
-            response.headers.setdefault("Strict-Transport-Security",
-                                        "max-age=31536000; includeSubDomains")
-        return response
+    app.add_middleware(Guards, services=services, allowlist=allowlist, limiter=limiter)
 
     @app.exception_handler(ApiError)
     async def api_error(_: Request, exc: ApiError) -> JSONResponse:
