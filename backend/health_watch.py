@@ -124,6 +124,10 @@ class HealthWatch:
         self._db_failures = 0
         self._db_down_since: datetime | None = None
         self._dropped_seen: int | None = None
+        self._spool_dropped_seen: int | None = None
+        self._slow_seen: int | None = None
+        self._limited_seen: int | None = None
+        self._sms_lost_seen: int | None = None
         self._loop_lag = 0.0
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -168,7 +172,7 @@ class HealthWatch:
         now = now or utcnow()
         db = await self.check_database(now)
         results = [db, *await self.check_disks(now), await self.check_storage(now),
-                   await self.check_loop(now)]
+                   await self.check_traffic(now), await self.check_loop(now)]
         if db.status == "ok":
             results += [await self.check_backup(now), await self.check_restore(now),
                         await self.check_clock(now)]
@@ -260,10 +264,18 @@ class HealthWatch:
         capacity = getattr(hub, "max_buffer", 200_000)
         dropped_now = stats.samples_dropped - (self._dropped_seen or 0)
         self._dropped_seen = stats.samples_dropped
+        spool_dropped = getattr(stats, "spool_dropped_batches", 0)
+        spool_lost = spool_dropped - (self._spool_dropped_seen or 0)
+        self._spool_dropped_seen = spool_dropped
         spooled = getattr(stats, "spool_batches", 0)
         details = {"buffered": stats.buffered, "capacity": capacity,
                    "dropped": stats.samples_dropped, "write_errors": stats.write_errors,
-                   "spool_batches": spooled}
+                   "spool_batches": spooled, "spool_dropped_batches": spool_dropped}
+        if spool_lost > 0:
+            message = (f"{spool_lost} batch(es) of samples were lost because the disk spool was "
+                       "full (database unreachable for long; HUB_SPOOL_MAX_MB)")
+            await self._raise("system:storage", AlarmSeverity.CRITICAL, message, now)
+            return CheckResult("storage", "critical", message, details)
         if dropped_now > 0:
             message = (f"{dropped_now} samples were lost because the storage buffer was full "
                        "(database too slow or unreachable)")
@@ -281,6 +293,40 @@ class HealthWatch:
         if stats.buffered < capacity / 10:
             await self._clear("system:storage", now)
         return CheckResult("storage", "ok", f"{stats.buffered} samples waiting", details)
+
+    async def check_traffic(self, now: datetime) -> CheckResult:
+        """Live clients (app, dashboards) dropped for falling behind, device messages dropped
+        by the per-device rate limit and alarm SMS / calls given up, since the last check."""
+        bus = getattr(self.services.hub, "bus", None)
+        slow = getattr(bus, "slow_dropped", 0)
+        ingest = getattr(self.services, "ingest", None)
+        limited = ingest.counters.get("rate_limited", 0) if ingest is not None else 0
+        slow_now = slow - (self._slow_seen if self._slow_seen is not None else slow)
+        limited_now = limited - (self._limited_seen if self._limited_seen is not None
+                                 else limited)
+        self._slow_seen, self._limited_seen = slow, limited
+        sms_lost = getattr(self.services.sms, "given_up", 0)
+        sms_now = sms_lost - (self._sms_lost_seen if self._sms_lost_seen is not None
+                              else sms_lost)
+        self._sms_lost_seen = sms_lost
+        details = {"slow_clients": slow, "rate_limited": limited, "sms_given_up": sms_lost,
+                   "sms_retrying": len(getattr(self.services.sms, "pending", ()) or ())}
+        problems = []
+        if sms_now:
+            problems.append(f"{sms_now} SMS / call(s) could not be delivered after every "
+                            "retry (SMS provider or internet down?)")
+        if slow_now:
+            problems.append(f"{slow_now} live connection(s) fell behind and were dropped "
+                            "(slow network or overloaded hub)")
+        if limited_now:
+            problems.append(f"{limited_now} device message(s) dropped: a device sends faster "
+                            "than HUB_DEVICE_MSG_RATE (faulty firmware?)")
+        if problems:
+            message = "; ".join(problems)
+            await self._raise("system:traffic", AlarmSeverity.MEDIUM, message, now)
+            return CheckResult("traffic", "warning", message, details)
+        await self._clear("system:traffic", now)
+        return CheckResult("traffic", "ok", "no dropped connections or messages", details)
 
     async def check_loop(self, now: datetime) -> CheckResult:
         lag, self._loop_lag = self._loop_lag, 0.0

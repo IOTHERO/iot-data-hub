@@ -1,4 +1,5 @@
-// System status: hub process, HA nodes, storage, certificates, backups, notifications, events.
+// System status: hub process, platform monitor (load, devices, traffic; refreshed every 5 s),
+// HA nodes, storage, certificates, backups, notifications, events.
 
 import { api } from '../api.js';
 import { t, tMaybe, fmtDate, fmtInteger, fmtDuration, fmtAgo, fmtNumber } from '../i18n.js';
@@ -16,7 +17,7 @@ async function section(box, title, load) {
 
 export async function render(page, { setTitle }) {
   setTitle(t('system.title'));
-  const boxes = Object.fromEntries(['health', 'hub', 'nodes', 'certs', 'backup', 'notify', 'events', 'config', 'outputs'].map((k) => [k, h('div')]));
+  const boxes = Object.fromEntries(['health', 'hub', 'platform', 'nodes', 'certs', 'backup', 'notify', 'events', 'config', 'outputs'].map((k) => [k, h('div')]));
 
   const loadHub = () => section(boxes.hub, t('system.hub'), async () => {
     const [st, health] = await Promise.all([api('api/system/stats'), api('api/health').catch((e) => e.body)]);
@@ -36,6 +37,41 @@ export async function render(page, { setTitle }) {
       st.last_write_error ? notice(`${t('system.last_write_error')}: ${st.last_write_error}`, 'bad') : null,
     ];
   });
+
+  // the platform watching itself; redrawn in place every 5 s while the page is open
+  const drawPlatform = async () => {
+    const p = await api('api/system/platform');
+    const kv = (k, v) => [h('dt', null, k), h('dd', null, v)];
+    const n = (v) => (v === null || v === undefined ? '—' : fmtInteger(v));
+    const dropped = (p.ingest.rate_limited || 0) + (p.live.slow_dropped || 0) + (p.sms.given_up || 0);
+    return [
+      h('div', { class: 'row' },
+        badge(p.mqtt.enabled ? (p.mqtt.connected ? t('system.mqtt_up') : t('system.mqtt_down')) : t('system.mqtt_off'),
+          p.mqtt.enabled ? (p.mqtt.connected ? 'online' : 'error') : 'unknown'),
+        badge(t('system.devices_online', { n: fmtInteger(p.devices.online), total: fmtInteger(p.devices.native) }),
+          p.devices.online === p.devices.native ? 'online' : 'sev-medium'),
+        badge(dropped ? t('system.dropped_some', { n: fmtInteger(dropped) }) : t('system.dropped_none'),
+          dropped ? 'sev-medium' : 'online')),
+      h('dl', { class: 'kv' },
+        kv(t('system.cpu'), p.process.cpu_percent === null ? '—' : `${fmtNumber(p.process.cpu_percent)} %`),
+        kv(t('system.memory'), p.process.memory_mb === null ? '—' : `${fmtNumber(p.process.memory_mb)} MB`),
+        kv(t('system.loop_lag'), p.process.loop_lag_s === null ? '—' : `${fmtNumber(p.process.loop_lag_s)} s`),
+        kv(t('system.drivers'), n(p.devices.all_drivers)),
+        kv(t('system.telemetry'), n(p.ingest.telemetry)), kv(t('system.commands'), n(p.ingest.commands)),
+        kv(t('system.acks'), n(p.ingest.acks)), kv(t('system.rejected'), n(p.ingest.rejected)),
+        kv(t('system.rate_limited'), `${n(p.ingest.rate_limited)} (${fmtNumber(p.rate_limit.per_device_s)}/s)`),
+        kv(t('system.auth_failed'), n(p.ingest.auth_failed)),
+        kv(t('system.tcp_open'), p.tcp.enabled ? n(p.tcp.open) : '—'), kv(t('system.http_queued'), n(p.http_queued)),
+        kv(t('system.mqtt_messages'), p.mqtt.enabled ? n(p.mqtt.messages) : '—'),
+        kv(t('system.live_clients'), n(p.live.subscribers)), kv(t('system.slow_dropped'), n(p.live.slow_dropped)),
+        kv(t('system.sms_retrying'), `${n(p.sms.retrying)} · ${t('system.sms_given_up')} ${n(p.sms.given_up)}`),
+        kv(t('system.pairing_open'), n(p.pairing_open))),
+    ];
+  };
+  const loadPlatform = () => section(boxes.platform, t('system.platform'), drawPlatform);
+  const ticker = setInterval(async () => {
+    try { mount(boxes.platform, card(t('system.platform'), ...[await drawPlatform()].flat())); } catch { /* next tick */ }
+  }, 5000);
 
   const loadNodes = () => section(boxes.nodes, t('system.nodes'), async () => {
     const nodes = await api('api/system/nodes');
@@ -155,9 +191,9 @@ export async function render(page, { setTitle }) {
     h('div', { class: 'page-head' }, h('div', null, h('h1', null, t('system.title')), h('div', { class: 'sub' }, t('system.subtitle'))),
       button(t('common.refresh'), () => all(), { iconName: 'refresh' })),
     boxes.health,
-    h('div', { class: 'grid wide' }, boxes.hub, boxes.nodes, boxes.config, boxes.certs),
+    h('div', { class: 'grid wide' }, boxes.hub, boxes.platform, boxes.nodes, boxes.config, boxes.certs),
     boxes.outputs, boxes.backup, boxes.notify, boxes.events);
-  const all = () => { loadHealth(); loadHub(); loadNodes(); loadCerts(); loadOutputs(); loadBackup(); loadNotify(); loadEvents(); loadConfig(); };
+  const all = () => { loadHealth(); loadHub(); loadPlatform(); loadNodes(); loadCerts(); loadOutputs(); loadBackup(); loadNotify(); loadEvents(); loadConfig(); };
   all();
-  return null;
+  return () => clearInterval(ticker);
 }

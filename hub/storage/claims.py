@@ -27,6 +27,7 @@ class ClaimTarget(BaseModel):
     locked_until: datetime | None = None
     used_at: datetime | None = None
     owner_org: str | None = None
+    require_pairing: bool = False
 
 
 class ClaimStore:
@@ -55,7 +56,8 @@ class ClaimStore:
                 "SELECT pd.device_id, pd.identifier, pd.lifecycle, pd.parent_device_id, "
                 "(pd.retired_at IS NOT NULL) AS retired, p.kind AS product_kind, c.code_hash, "
                 "c.purpose, coalesce(c.failed_attempts, 0) AS failed_attempts, c.locked_until, "
-                "c.used_at, (SELECT a.org_id FROM device_access a WHERE a.device_id = "
+                "c.used_at, p.require_pairing, (SELECT a.org_id FROM device_access a "
+                "WHERE a.device_id = "
                 "pd.device_id AND a.level = 'owner' AND a.revoked_at IS NULL) AS owner_org "
                 "FROM platform_devices pd JOIN products p USING (product_id) "
                 "LEFT JOIN device_claim_codes c USING (device_id) "

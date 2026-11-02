@@ -40,6 +40,10 @@ class DeviceAuthError(Exception):
     pass
 
 
+class DeviceRateLimited(ValueError):
+    """The device sends more than HUB_DEVICE_MSG_RATE messages per second: dropped."""
+
+
 class Ingest:
     def __init__(self, svc: Any, clock: Callable[[], datetime] = utcnow) -> None:
         self.svc = svc
@@ -50,13 +54,57 @@ class Ingest:
         self._auth: dict[tuple[str, str], float] = {}
         self._failures: dict[str, deque[float]] = {}
         self.counters = {"telemetry": 0, "acks": 0, "commands": 0, "auth_failed": 0,
-                         "rejected": 0}
+                         "rejected": 0, "rate_limited": 0}
+        self._buckets: dict[str, list[float]] = {}     # device_id -> [tokens, last refill]
+        # how each device last reached the hub: a device allowed every transport but running
+        # HTTP firmware must get its commands in the HTTP queue, not on a broker it never reads
+        self.seen_via: dict[str, str] = {}
+        self._limit_logged: dict[str, float] = {}
 
     # --- authentication -----------------------------------------------------------------------
 
     async def authenticate(self, device_id: str, secret: str, client_addr: str | None,
                            transport: str) -> NativeDriver:
         """The running driver of a native device whose credential is ``secret``."""
+        ok = await self._credential_ok(device_id, secret, client_addr)
+        driver = self.driver(device_id) if ok else None
+        if driver is None or transport not in driver.device.connection.transports:
+            await self._refused(device_id, client_addr, transport,
+                                "credential" if not ok else "not running or transport off")
+        assert driver is not None                 # noqa: S101 - _refused raised otherwise
+        self.seen_via[device_id] = transport
+        await driver.touch()                      # any signed-in contact keeps it online
+        return driver
+
+    def _use_mqtt(self, device_id: str, transports: list[str]) -> bool:
+        """The platform broker for this device: it is up, the device may use it, and the
+        device was not last seen over HTTP (then it polls the HTTP queue instead)."""
+        return (self.mqtt is not None and self.mqtt.connected and "mqtt" in transports
+                and not (self.seen_via.get(device_id) == "http" and "http" in transports))
+
+    async def pairing(self, device_id: str, secret: str, client_addr: str | None,
+                      transport: str) -> None:
+        """Pairing mode reported by a device that may not run yet (not claimed, not enabled):
+        only its credential is checked."""
+        if not await self._credential_ok(device_id, secret, client_addr):
+            await self._refused(device_id, client_addr, transport, "credential")
+        self.svc.claims.pairing_started(device_id)
+
+    async def broker_connect(self, device_id: str, secret: str, client_addr: str | None) -> None:
+        """The broker asks whether the device may connect: a valid credential. A device that does
+        not run yet (not claimed or not enabled) may connect too, to report pairing mode; the
+        ACL keeps it to its own topics and its other messages are dropped until it runs."""
+        if not await self._credential_ok(device_id, secret, client_addr):
+            await self._refused(device_id, client_addr, "mqtt", "credential")
+        driver = self.driver(device_id)
+        if driver is not None:
+            if "mqtt" not in driver.device.connection.transports:
+                await self._refused(device_id, client_addr, "mqtt", "transport off")
+            self.seen_via[device_id] = "mqtt"
+            await driver.touch()
+
+    async def _credential_ok(self, device_id: str, secret: str, client_addr: str | None
+                             ) -> bool:
         now = time.monotonic()
         failures = self._failures.setdefault(client_addr or "-", deque())
         while failures and now - failures[0] > 600:
@@ -72,17 +120,16 @@ class Ingest:
                 self._auth[key] = now + AUTH_CACHE_S
                 if len(self._auth) > 100_000:
                     self._auth.clear()
-        driver = self.driver(device_id) if ok else None
-        if driver is None or transport not in driver.device.connection.transports:
-            failures.append(now)
-            self.counters["auth_failed"] += 1
-            await self.svc.store.add_auth_audit(
-                "device_auth_failed", device_id[:64], client_addr=client_addr,
-                detail={"transport": transport,
-                        "reason": "credential" if not ok else "not running or transport off"})
-            raise DeviceAuthError("unknown device or wrong credential")
-        await driver.touch()                      # any signed-in contact keeps it online
-        return driver
+        return ok
+
+    async def _refused(self, device_id: str, client_addr: str | None, transport: str,
+                       reason: str) -> None:
+        self._failures.setdefault(client_addr or "-", deque()).append(time.monotonic())
+        self.counters["auth_failed"] += 1
+        await self.svc.store.add_auth_audit(
+            "device_auth_failed", device_id[:64], client_addr=client_addr,
+            detail={"transport": transport, "reason": reason})
+        raise DeviceAuthError("unknown device or wrong credential")
 
     def driver(self, device_id: str) -> NativeDriver | None:
         driver = self.svc.hub.drivers.get(device_id)
@@ -95,7 +142,32 @@ class Ingest:
 
     # --- device -> hub ------------------------------------------------------------------------
 
+    def admit(self, device_id: str) -> None:
+        """Token bucket per device (HUB_DEVICE_MSG_RATE / _BURST); raises DeviceRateLimited."""
+        rate = self.svc.settings.device_msg_rate
+        if rate <= 0:
+            return
+        burst = float(self.svc.settings.device_msg_burst)
+        now = time.monotonic()
+        bucket = self._buckets.get(device_id)
+        if bucket is None:
+            if len(self._buckets) > 200_000:
+                self._buckets.clear()
+            bucket = self._buckets[device_id] = [burst, now]
+        bucket[0] = min(burst, bucket[0] + (now - bucket[1]) * rate)
+        bucket[1] = now
+        if bucket[0] >= 1:
+            bucket[0] -= 1
+            return
+        self.counters["rate_limited"] += 1
+        if now - self._limit_logged.get(device_id, 0) > 60:     # once a minute per device
+            self._limit_logged[device_id] = now
+            log.warning("device %s sends more than %s messages/s: messages dropped",
+                        device_id, rate)
+        raise DeviceRateLimited(f"more than {rate:g} messages per second; slow down")
+
     async def telemetry(self, driver: NativeDriver, payload: Any) -> int:
+        self.admit(driver.device.device_id)
         self.counters["telemetry"] += 1
         try:
             return await driver.receive(payload)
@@ -104,7 +176,14 @@ class Ingest:
             raise
 
     async def state(self, driver: NativeDriver, payload: Any) -> None:
-        """``{"state": "online", "firmware": "1.4.2"}``: the firmware version is kept."""
+        """``{"state": "online", "firmware": "1.4.2"}``: the firmware version is kept.
+        ``{"state": "pairing"}``: the owner holds the device's button (claims are accepted for a
+        short window, products with require_pairing)."""
+        self.admit(driver.device.device_id)
+        if isinstance(payload, dict) and payload.get("state") == "pairing":
+            self.svc.claims.pairing_started(driver.device.device_id)
+            await driver.touch()
+            return
         await driver.state(payload)
         firmware = payload.get("firmware") if isinstance(payload, dict) else None
         if isinstance(firmware, str) and firmware.strip():
@@ -136,7 +215,7 @@ class Ingest:
         if session is not None and "tcp" in transports:
             await session(message)
             transport = "tcp"
-        elif self.mqtt is not None and self.mqtt.connected and "mqtt" in transports:
+        elif self._use_mqtt(device_id, transports):
             await self.mqtt.publish(f"d/{device_id}/ota", message)
             transport = "mqtt"
         else:
@@ -157,7 +236,7 @@ class Ingest:
         if session is not None and "tcp" in transports:
             await session(message)
             return "tcp"
-        if self.mqtt is not None and self.mqtt.connected and "mqtt" in transports:
+        if self._use_mqtt(device_id, transports):
             await self.mqtt.publish(f"d/{device_id}/{message['type']}", message)
             return "mqtt"
         queue = self.queues.setdefault(device_id, deque(maxlen=MAX_QUEUED))
@@ -196,7 +275,7 @@ class Ingest:
         if session is not None and "tcp" in transports:
             await session({"type": "command", **message})
             transport = "tcp"
-        elif self.mqtt is not None and self.mqtt.connected and "mqtt" in transports:
+        elif self._use_mqtt(device.device_id, transports):
             await self.mqtt.publish_command(device.device_id, message)
             transport = "mqtt"
         elif "http" in transports:

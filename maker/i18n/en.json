@@ -1,12 +1,14 @@
 {
   "shell": {
-    "title": "Maker panel",
+    "title": "TiTiSwitch · Maker panel",
     "panel": "Maker panel",
     "menu": "Maker menu",
     "organization": "Organization",
     "sign_out": "Sign out",
     "no_org": "You are not a member of a manufacturer organization",
-    "no_org_hint": "Ask your organization's administrator to invite you as product manager, production operator or support."
+    "no_org_hint": "Ask your organization's administrator to invite you as product manager, production operator or support.",
+    "brand": "TiTiSwitch",
+    "powered": "Powered by TiTiSwitch"
   },
   "menu": {
     "dashboard": "Dashboard",
@@ -166,7 +168,9 @@
     "tab_io": "Inputs & outputs",
     "tab_commands": "Commands",
     "tab_protocols": "Protocols",
-    "tab_versions": "Versions"
+    "tab_versions": "Versions",
+    "pairing": "Claim only in pairing mode (the device's button held)",
+    "pairing_help": "The buyer holds the device's button, the device sends {\"state\": \"pairing\"} with its own credential, and the label code is accepted for 2 minutes. A photo of the label is not enough to take the device. Turn it on only when the firmware sends this message."
   },
   "kind": {
     "digital_output": "Digital output",

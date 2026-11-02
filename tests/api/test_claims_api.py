@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -112,7 +113,10 @@ async def test_labels_claim_transfer_release_reset(backend: Backend) -> None:
 
     r = await b.client.delete(f"/api/platform/my/devices/{devices[0]['device_id']}",
                               headers=omid)
-    assert r.status_code == 204 and await mine(b, omid) == []
+    assert r.status_code == 200 and await mine(b, omid) == []
+    # removed: the used code stays dead, the fresh one lets the next owner add it
+    r = await claim(b, sara, "CTRL-8R-0001", r.json()["claim_code"])
+    assert r.status_code == 200 and await mine(b, sara) == ["CTRL-8R-0001"], r.text
 
     # the maker's reset: every access ends, a fresh activation code works (lock cleared)
     r = await b.client.post(f"/api/platform/devices/{devices[1]['device_id']}/reset",
@@ -147,6 +151,37 @@ async def test_csv_registration(backend: Backend) -> None:
     r = await b.client.post(f"/api/platform/products/{pid}/devices", headers=h["alice"],
                             json={"version": 1, "protocol": "mqtt", "csv": "x,1\nbad id,2"})
     assert r.status_code == 422
+
+
+async def test_pairing_mode_needs_the_device_itself(backend: Backend) -> None:
+    """require_pairing: the right code is not enough until the device reports pairing mode
+    with its own credential (HTTP here; MQTT d/<id>/pairing, or state "pairing" when running)."""
+    b = backend
+    h = await _setup(b)
+    pid = await _product(b, h["alice"], relay_template())
+    r = await b.client.patch(f"/api/platform/products/{pid}", headers=h["alice"],
+                             json={"require_pairing": True})
+    assert r.status_code == 200 and r.json()["require_pairing"] is True, r.text
+    await register(b, h["alice"], pid, count=1)
+    (row,) = await labels(b, h["olga"], pid, credentials=True)
+    sara = await account(b, "sara@example.com", "Sara")
+
+    r = await claim(b, sara, row["identifier"], row["claim_code"])     # a photo of the label
+    assert r.status_code == 422 and r.json()["error"] == "pairing_required", r.text
+    pairing = f"/ingest/v1/devices/{row['device_id']}/pairing"
+    assert (await b.client.post(pairing)).status_code == 401
+    r = await b.client.post(pairing, headers={"Authorization": "Bearer guess"})
+    assert r.status_code == 401
+    r = await b.client.post(pairing, headers={"Authorization": f"Bearer {row['device_secret']}"})
+    assert r.status_code == 200 and r.json()["window_s"] == 120, r.text
+
+    b.services.claims._pairing[row["device_id"]] = datetime(2000, 1, 1, tzinfo=UTC)  # expired
+    r = await claim(b, sara, row["identifier"], row["claim_code"])
+    assert r.json()["error"] == "pairing_required"
+    await b.client.post(pairing, headers={"Authorization": f"Bearer {row['device_secret']}"})
+    r = await claim(b, sara, row["identifier"], row["claim_code"])     # refusals did not lock it
+    assert r.status_code == 200, r.text
+    assert await mine(b, sara) == [row["identifier"]]
 
 
 async def test_edge_hub_with_catalog_device(backend: Backend) -> None:

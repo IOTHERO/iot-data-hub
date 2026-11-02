@@ -77,6 +77,25 @@ async def test_storage_loss_backlog_and_loop(backend: Backend) -> None:
     assert "system:loop" in await open_sources(backend)
 
 
+async def test_spool_loss_slow_clients_and_flooding_devices(backend: Backend) -> None:
+    w = await watch(backend)
+    hub, svc = backend.services.hub, backend.services
+    await w.run_once()                                        # the counters as they are now
+    hub.stats.spool_dropped_batches += 2
+    results = by_name(await w.run_once())
+    assert results["storage"]["status"] == "critical" and "2 batch" in results["storage"]["message"]
+    hub.bus.slow_dropped += 1
+    svc.ingest.counters["rate_limited"] += 40
+    results = by_name(await w.run_once())
+    traffic = results["traffic"]
+    assert traffic["status"] == "warning"
+    assert "1 live connection" in traffic["message"] and "40 device message" in traffic["message"]
+    assert "system:traffic" in await open_sources(backend)
+    results = by_name(await w.run_once())                     # nothing new: cleared
+    assert results["traffic"]["status"] == "ok" and results["storage"]["status"] == "ok"
+    assert not {"system:traffic", "system:storage"} & await open_sources(backend)
+
+
 async def test_backup_and_restore_failures(backend: Backend, tmp_path: Path) -> None:
     w = await watch(backend, backup_dir=tmp_path, backup_max_age_hours=1)
     store = backend.store

@@ -497,7 +497,8 @@ class HomeStore:
                 t_params.append(product_id)
             tickets = await series("created_at", t_where, t_params)
             faulty = (await (await conn.execute(
-                "SELECT count(*) AS n FROM platform_devices pd JOIN device_status s "
+                # fixed SQL fragments only; every value is a parameter
+                "SELECT count(*) AS n FROM platform_devices pd JOIN device_status s "  # nosec B608
                 "USING (device_id) WHERE " + where.replace("maker_org_id", "pd.maker_org_id")
                 .replace("retired_at", "pd.retired_at").replace("product_id", "pd.product_id")
                 + " AND pd.lifecycle='active' AND (s.state IS DISTINCT FROM 'online') AND "

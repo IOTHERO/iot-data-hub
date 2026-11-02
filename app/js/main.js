@@ -22,7 +22,7 @@ const theme = saved.get("app.theme");
 if (theme) document.documentElement.dataset.theme = theme;
 const accent = saved.get("app.accent");
 if (accent) document.documentElement.dataset.accent = accent;
-splash();                                   // the logo plays while everything below loads
+splash({ sound: saved.get("app.sound") !== "off" });   // the logo plays while the app loads
 
 async function render() {
   clearInterval(state.timer);

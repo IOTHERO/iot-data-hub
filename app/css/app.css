@@ -716,19 +716,19 @@ label:has(.ck-input:not(:checked)) .tiny.muted { opacity: .7; }
 .jump:active { transform: scale(.94); }
 
 /* --- TiTiSwitch logo and the start-up splash -------------------------------------------------- */
-.logo { display: block; width: 100%; height: auto; overflow: visible; }
-.logo .lg-line { fill: none; stroke: #00B4CD; stroke-linejoin: miter; }
-.logo .lg-pill { fill: var(--brand-orange, #F58634); }
-.logo .lg-knob { fill: #FFFFFF; }
-.logo .lg-dot { fill: #00B4CD; }
-.logo .lg-wave { fill: none; stroke: #00B4CD; stroke-linecap: round; }
-.logo .lg-word { fill: var(--text); opacity: .78; font-family: var(--font); font-weight: 900; font-size: 250px; }
-.logo .lg-latin { fill: var(--muted); font-family: var(--font); font-weight: 600; font-size: 150px;
+.tt-logo { display: block; width: 100%; height: auto; overflow: visible; }
+.tt-logo .lg-line { fill: none; stroke: #00B4CD; stroke-linejoin: miter; }
+.tt-logo .lg-pill { fill: var(--brand-orange, #F58634); }
+.tt-logo .lg-knob { fill: #FFFFFF; }
+.tt-logo .lg-dot { fill: #00B4CD; }
+.tt-logo .lg-wave { fill: none; stroke: #00B4CD; stroke-linecap: round; }
+.tt-logo .lg-word { fill: var(--text); opacity: .78; font-family: var(--font); font-weight: 900; font-size: 250px; }
+.tt-logo .lg-latin { fill: var(--muted); font-family: var(--font); font-weight: 600; font-size: 150px;
   letter-spacing: 58px; }
 
 .splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--bg);
   cursor: pointer; transition: opacity .45s var(--ease), transform .45s var(--ease), filter .45s; }
-.splash .logo { width: min(58vw, 280px); position: relative; }
+.splash .tt-logo { width: min(58vw, 280px); position: relative; }
 .splash.out { opacity: 0; transform: scale(1.06); filter: blur(6px); pointer-events: none; }
 .splash-glow { position: absolute; width: 520px; height: 520px; border-radius: 50%; opacity: 0;
   background: radial-gradient(circle, rgba(0,180,205,0.22), rgba(245,134,52,0.08) 45%, transparent 70%);
@@ -766,6 +766,6 @@ label:has(.ck-input:not(:checked)) .tiny.muted { opacity: .7; }
 
 /* --- the company card in "Me" ----------------------------------------------------------------- */
 .company { align-items: center; text-align: center; }
-.company .logo { width: 112px; }
+.company .tt-logo { width: 112px; }
 .company .reading { width: 100%; }
 .hero-logo { width: 120px; margin-bottom: 6px; }

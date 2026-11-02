@@ -291,6 +291,20 @@ Offline: no message for `stale_after_s` (or state offline) → device offline, e
 Device sign-in failures are audited (`device_auth_failed`) and limited per address (20 per
 10 minutes); a device that is switched off or removed cannot sign in.
 
+Each device may send `HUB_DEVICE_MSG_RATE` messages per second (telemetry and state, default 5)
+with a burst of `HUB_DEVICE_MSG_BURST` (30); beyond, its messages are dropped (HTTP 429
+`device_rate_limited`, MQTT dropped, TCP `{"type": "error"}`), counted as `rate_limited` and
+logged once a minute per device. Acks are never limited (they confirm commands).
+
+**Pairing mode** (product option `require_pairing`): the owner holds the device's button and the
+device reports it with its own credential, also before it is claimed or enabled:
+`POST /ingest/v1/devices/{id}/pairing`, MQTT `<prefix>d/<id>/pairing`, or state `pairing` on a
+running session. The claim code is accepted for 120 s after that (`pairing_required` before).
+For this the broker hook admits a device that does not run yet; its other messages are dropped. The MQTT
+pairing message is only as trustworthy as the broker's hooks: without `HUB_BROKER_HOOK_TOKEN`
+anyone on the broker could send it, and the claim code alone protects the device (as without
+`require_pairing`). The window lives in the active node's memory (a failover closes it).
+
 A command goes to the open TCP session, else the platform broker (if the device uses MQTT),
 else the HTTP queue.
 

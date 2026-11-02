@@ -158,7 +158,9 @@
     "transfer_hint": "Give this code to the new owner (shown only once):",
     "remove": "Remove from account",
     "remove_confirm": "Remove the device from your account? Every share ends too.",
-    "removed": "Device removed"
+    "removed": "Device removed",
+    "removed_hint": "Keep this new code with the device or give it to the next owner; the old label code no longer works (shown only once):",
+    "done": "Back to home"
   },
   "add": {
     "identifier": "Device identifier",
@@ -239,7 +241,8 @@
     "personal_owner": "The owner of a personal home cannot be removed",
     "invalid_role": "This role is not allowed",
     "invalid_device": "The device settings are not valid",
-    "not_authenticated": "Sign in again"
+    "not_authenticated": "Sign in again",
+    "pairing_required": "The code is right, but the device is not in pairing mode. Hold the device's button for a few seconds until its light blinks, then try again (within 2 minutes)."
   },
   "week": {
     "0": "Sat",

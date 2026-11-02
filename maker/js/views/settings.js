@@ -6,7 +6,7 @@ import { api, busy, confirmAction, date, h, icon, lang, loadLanguage, logout, nu
 import { can, ctx, field, input, pageHead, select } from "../ui.js";
 
 const ROLES = ["manufacturer_admin", "production_operator", "manufacturer_support"];
-const ACCENTS = [["", "#E8B86A"], ["teal", "#7FD1C7"], ["violet", "#A99BFF"], ["coral", "#FF9F7A"]];
+const ACCENTS = [["", "#19B8D0"], ["gold", "#E8B86A"], ["teal", "#7FD1C7"], ["violet", "#A99BFF"], ["coral", "#FF9F7A"]];
 
 export default async function settings() {
   const org = ctx.org.org_id;

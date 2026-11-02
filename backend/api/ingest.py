@@ -3,9 +3,11 @@
 Devices sign in with their credential: ``Authorization: Bearer <device secret>``.
 
 * ``POST /ingest/v1/devices/{id}/telemetry``  ``{"ts": ..., "values": {...}}``
-* ``POST /ingest/v1/devices/{id}/state``      ``{"state": "online" | "offline"}``
+* ``POST /ingest/v1/devices/{id}/state``      ``{"state": "online" | "offline" | "pairing"}``
 * ``POST /ingest/v1/devices/{id}/ack``        ``{"command_id": ..., "status": ...}``
 * ``GET  /ingest/v1/devices/{id}/commands``   waiting commands (they count as sent)
+* ``POST /ingest/v1/devices/{id}/pairing``    the owner holds the pairing button (also before
+  the device is claimed or enabled; products with require_pairing accept a claim for 2 minutes)
 
 Broker hooks (EMQX HTTP authentication / authorization, mosquitto-go-auth http backend),
 called by the broker with ``X-Hub-Hook-Token: <HUB_BROKER_HOOK_TOKEN>``:
@@ -25,9 +27,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Body, Header, Request
 from pydantic import BaseModel, Field
 
+from backend.claims import PAIRING_WINDOW_S
 from backend.deps import ServicesDep, client_addr
 from backend.errors import ApiError, Forbidden, Invalid, TooManyRequests, Unauthorized
-from backend.ingest import DeviceAuthError
+from backend.ingest import DeviceAuthError, DeviceRateLimited
 from backend.mqtt_ingest import acl_allows
 from hub.drivers.native import NativeDriver
 
@@ -59,6 +62,8 @@ async def telemetry(device_id: str, payload: Payload, svc: ServicesDep, request:
     driver = await _device(svc, device_id, authorization, request)
     try:
         n = await svc.ingest.telemetry(driver, payload)
+    except DeviceRateLimited as exc:
+        raise TooManyRequests(str(exc), code="device_rate_limited") from None
     except ValueError as exc:
         raise _invalid(exc) from None
     return {"accepted": n, "commands": len(svc.ingest.queues.get(device_id, ()))}
@@ -68,8 +73,26 @@ async def telemetry(device_id: str, payload: Payload, svc: ServicesDep, request:
 async def state(device_id: str, payload: Payload, svc: ServicesDep, request: Request,
                 authorization: Annotated[str | None, Header()] = None) -> dict[str, Any]:
     driver = await _device(svc, device_id, authorization, request)
-    await svc.ingest.state(driver, payload)
+    try:
+        await svc.ingest.state(driver, payload)
+    except DeviceRateLimited as exc:
+        raise TooManyRequests(str(exc), code="device_rate_limited") from None
     return {"ok": True}
+
+
+@router.post("/devices/{device_id}/pairing")
+async def pairing(device_id: str, svc: ServicesDep, request: Request,
+                  authorization: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    scheme, _, secret = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not secret:
+        raise Unauthorized("Authorization: Bearer <device secret>", code="device_auth")
+    try:
+        await svc.ingest.pairing(device_id, secret.strip(), client_addr(request), "http")
+    except DeviceAuthError as exc:
+        if "too many" in str(exc):
+            raise TooManyRequests(str(exc), code="device_auth_throttled") from None
+        raise Unauthorized(str(exc), code="device_auth") from None
+    return {"pairing": True, "window_s": PAIRING_WINDOW_S}
 
 
 @router.post("/devices/{device_id}/ack")
@@ -115,8 +138,7 @@ async def broker_auth(body: BrokerAuthIn, svc: ServicesDep, request: Request,
                       ) -> dict[str, str]:
     _hook(svc, x_hub_hook_token)
     try:
-        await svc.ingest.authenticate(body.username, body.password, client_addr(request),
-                                      "mqtt")
+        await svc.ingest.broker_connect(body.username, body.password, client_addr(request))
     except DeviceAuthError:
         return {"result": "deny"}
     return {"result": "allow"}

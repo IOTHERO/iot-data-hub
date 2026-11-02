@@ -2,6 +2,7 @@
 // cyan line traces the "T" path, the two orange switches flip, the signals ripple out and the
 // wordmark rises. The wordmark is part of the artwork (the brand name in both scripts, as on the
 // printed logo), not translatable UI text. Coordinates follow the original 2000 x 2000 artwork.
+// maker/js/logo.js is a copy of this file (tests/frontend keeps the two equal).
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -36,7 +37,7 @@ function toggle(n, x, y, knobY) {
 
 /** The logo; `wordmark` adds the name under the mark. */
 export function logo({ wordmark = true, label = "TiTiSwitch" } = {}) {
-  const svg = el("svg", { class: "logo", viewBox: wordmark ? "400 150 1150 1560" : "400 150 1100 1120",
+  const svg = el("svg", { class: "tt-logo", viewBox: wordmark ? "400 150 1150 1560" : "400 150 1100 1120",
     role: "img", "aria-label": label });
   svg.append(
     el("path", { class: "lg-line", pathLength: 1, "stroke-width": 37,

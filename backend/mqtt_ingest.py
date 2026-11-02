@@ -6,6 +6,8 @@ One subscription for all devices (not a connection per device):
     <prefix>d/+/state       device -> hub   {"state": "online" | "offline"}  (use it as LWT)
     <prefix>d/+/ack         device -> hub   {"command_id": ..., "status": ...}
     <prefix>d/+/ota/status  device -> hub   {"job_id": ..., "status": ...}  (firmware)
+    <prefix>d/+/pairing     device -> hub   {}  the owner holds the pairing button (also before
+                                            the device is claimed)
     <prefix>d/<id>/ota      hub -> device   a firmware offer
     <prefix>d/<id>/cmd      hub -> device   {"command_id": ..., "tag": ..., "value": ...}
 
@@ -74,7 +76,7 @@ class MqttIngest:
             try:
                 async with self._client() as client:
                     self.client = client
-                    for kind in ("telemetry", "state", "ack", "ota/status"):
+                    for kind in ("telemetry", "state", "ack", "ota/status", "pairing"):
                         await client.subscribe(f"{self.shared}{self.prefix}d/+/{kind}", qos=1)
                     self.connected = True
                     delay = 1.0
@@ -99,10 +101,16 @@ class MqttIngest:
         if len(parts) not in (3, 4) or parts[0] != "d":
             return
         device_id, kind = parts[1], "/".join(parts[2:])
+        if kind == "pairing":
+            # the broker's ACL lets only the device itself publish under d/<its id>/, so the
+            # topic is its proof; it may not run yet (not claimed, not enabled)
+            self.ingest.svc.claims.pairing_started(device_id)
+            return
         driver = self.ingest.driver(device_id)
         if driver is None or "mqtt" not in driver.device.connection.transports:
             self.counters["dropped"] += 1
             return
+        self.ingest.seen_via[device_id] = "mqtt"
         try:
             if not isinstance(payload, bytes | bytearray) or len(payload) > MAX_PAYLOAD:
                 raise ValueError("payload too large")
@@ -130,11 +138,12 @@ class MqttIngest:
 
 
 def acl_allows(device_id: str, topic: str, action: str, prefix: str = "") -> bool:
-    """A device may publish its telemetry / state / ack and subscribe to its commands, firmware
-    offers, local rules and settings only."""
+    """A device may publish its telemetry / state / ack / pairing and subscribe to its commands,
+    firmware offers, local rules and settings only."""
     own = f"{prefix}d/{device_id}/"
     if action == "publish":
-        return topic in (own + "telemetry", own + "state", own + "ack", own + "ota/status")
+        return topic in (own + "telemetry", own + "state", own + "ack", own + "ota/status",
+                         own + "pairing")
     if action == "subscribe":
         return topic in (own + "cmd", own + "ota", own + "rules", own + "config")
     return False

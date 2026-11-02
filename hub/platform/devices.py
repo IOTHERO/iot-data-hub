@@ -134,6 +134,7 @@ class ProductIn(Strict):
     identifier_pattern: str
     kind: Literal["device", "edge_hub"] = "device"   # an edge hub has devices behind it
     catalog: bool = False        # any buyer may add it behind an edge hub (third-party gear)
+    require_pairing: bool = False   # claimed only in pairing mode (the device's button held)
 
     @field_validator("identifier_pattern")
     @classmethod

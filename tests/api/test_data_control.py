@@ -278,6 +278,15 @@ async def test_audit_and_system_endpoints(backend: Backend) -> None:
                                      headers=await backend.headers("op.gate"))).status_code == 403
     stats = (await backend.client.get("/api/system/stats", headers=eng)).json()
     assert stats["devices"] == {"drive_01": "online", "meter_02": "online"}
+    r = await backend.client.get("/api/system/platform", headers=eng)
+    assert r.status_code == 200, r.text
+    platform = r.json()
+    assert platform["devices"]["all_drivers"] == 2 and platform["devices"]["native"] == 0
+    assert platform["process"]["pid"] > 0 and platform["process"]["memory_mb"] > 0
+    assert {"telemetry", "rate_limited"} <= set(platform["ingest"])
+    assert platform["sms"] == {"provider": "none", "retrying": 0, "given_up": 0}
+    assert (await backend.client.get("/api/system/platform",
+                                     headers=await backend.headers("op.gate"))).status_code == 403
     health = (await backend.client.get("/api/health")).json()
     assert health["status"] == "ok" and health["devices"]["online"] == 2
     r = await backend.client.get("/api/health")

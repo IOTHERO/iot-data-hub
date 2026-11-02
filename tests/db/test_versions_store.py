@@ -15,6 +15,7 @@ pytestmark = pytest.mark.postgres
 
 
 def test_up_down_up(database_url: str) -> None:
+    rollback(database_url, "0019_claim_pairing")
     rollback(database_url, "0018_home_levels")
     rollback(database_url, "0017_switches_sms")
     rollback(database_url, "0016_home_maker_plus")
@@ -26,7 +27,8 @@ def test_up_down_up(database_url: str) -> None:
                                      "0015_maker_home",
                                      "0016_home_maker_plus",
                                      "0017_switches_sms",
-                                     "0018_home_levels"]
+                                     "0018_home_levels",
+                                     "0019_claim_pairing"]
 
 
 async def test_rollback_refused_with_releases(store: Any, database_url: str) -> None:
@@ -37,6 +39,7 @@ async def test_rollback_refused_with_releases(store: Any, database_url: str) -> 
                                      notes=None, sha256=hashlib.sha256(image).hexdigest(),
                                      image=image, min_template_version=None, user_id=None)
     with pytest.raises(psycopg.Error, match="firmware releases exist"):
+        rollback(database_url, "0019_claim_pairing")
         rollback(database_url, "0018_home_levels")
         rollback(database_url, "0017_switches_sms")
         rollback(database_url, "0016_home_maker_plus")

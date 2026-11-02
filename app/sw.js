@@ -1,5 +1,5 @@
 // Service worker: the app shell works offline (network first, the cache when offline); never the API.
-const CACHE = "app-shell-v10";
+const CACHE = "app-shell-v11";
 const SHELL = ["./", "index.html", "css/app.css", "js/main.js", "js/core.js", "js/views.js", "js/auto.js", "js/more.js", "js/outputs.js", "js/climate.js", "js/picker.js", "js/levels.js", "js/checks.js", "js/logo.js", "js/splash.js",
   "i18n/fa.json", "i18n/en.json", "icon.svg", "manifest.webmanifest", "fonts/Vazirmatn.woff2"];
 

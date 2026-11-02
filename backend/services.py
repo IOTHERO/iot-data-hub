@@ -255,5 +255,7 @@ class Services:
             await self.tcp_ingest.stop()
         if self.ingest is not None:
             await self.ingest.close()
+        if hasattr(self.sms, "close"):
+            await self.sms.close()
         await self.control.stop()
         await self.hub.stop()

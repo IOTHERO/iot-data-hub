@@ -776,9 +776,15 @@ function ownerTools(d) {
   const remove = h("button", { class: "btn danger" }, t("owner.remove"));
   remove.addEventListener("click", busy(remove, async () => {
     if (!confirm(t("owner.remove_confirm"))) return;
-    await api("DELETE", `/api/platform/my/devices/${d.device_id}`);
+    const r = await api("DELETE", `/api/platform/my/devices/${d.device_id}`);
     toast(t("owner.removed"), "ok");
-    go("#/home");
+    // the device is free now: its new code is for whoever adds it next (shown once)
+    transfer.disabled = true;
+    remove.disabled = true;
+    codeBox.classList.remove("hidden");
+    codeBox.replaceChildren(h("p", { class: "small muted" }, t("owner.removed_hint")),
+      h("div", { class: "code mono ltr" }, r.claim_code),
+      h("button", { class: "btn primary block", onclick: () => go("#/home") }, t("owner.done")));
   }));
   return h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("share.title")),
     sharesList(d), email.el, level, share, h("div", { class: "row wrap" }, transfer, remove), codeBox);

@@ -5,6 +5,10 @@ over HTTP, TCP or MQTT, signed in with its device credential.
 Faults for tests: ``refuse`` (ack failed), ``silent`` (no ack, no new value), ``ack_only``
 (acks done but never reports the value).
 
+Firmware rules it shows: pairing mode (``pair_http``; MQTT ``d/<id>/pairing``) and reconnecting
+after a random delay (``reconnect_delay`` / ``run_forever``): a power cut must not bring
+thousands of devices back in the same second.
+
     python -m simulators.native_device --http http://127.0.0.1:8000 --device d… --secret …
 """
 
@@ -18,7 +22,10 @@ import hashlib
 import hmac
 import json
 import logging
+import random
 import ssl
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -26,6 +33,37 @@ from typing import Any
 import httpx
 
 log = logging.getLogger(__name__)
+
+FIRST_DELAY_MAX_S = 10.0          # the first try after a cut: 0..10 s
+DELAY_CAP_S = 300.0               # never wait longer than 5 minutes
+JITTER = 0.2                      # +-20 % on every wait
+STABLE_S = 60.0                   # a session this long resets the delay
+
+
+def reconnect_delay(attempt: int, rng: random.Random | None = None) -> float:
+    """Seconds to wait before reconnect try ``attempt`` (0 = the first after a cut): random
+    0..10 s first, then doubling up to 5 minutes, always +-20 % random."""
+    rng = rng or random.Random()  # noqa: S311 - spreading reconnects, not security
+    if attempt <= 0:
+        return rng.uniform(0, FIRST_DELAY_MAX_S)
+    base = min(DELAY_CAP_S, FIRST_DELAY_MAX_S * 2 ** (attempt - 1))
+    return max(0.0, base * rng.uniform(1 - JITTER, 1 + JITTER))
+
+
+async def run_forever(session: Callable[[], Awaitable[Any]], stop: asyncio.Event,
+                      rng: random.Random | None = None,
+                      sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
+    """Keep a session (run_tcp / run_mqtt) up: after it ends or fails, wait reconnect_delay;
+    a session that lasted STABLE_S starts the delays over."""
+    attempt = 0
+    while not stop.is_set():
+        started = time.monotonic()
+        with contextlib.suppress(OSError, ConnectionError, TimeoutError):
+            await session()
+        if stop.is_set():
+            return
+        attempt = 0 if time.monotonic() - started >= STABLE_S else attempt + 1
+        await sleep(reconnect_delay(attempt - 1 if attempt else 0, rng))
 
 
 @dataclass
@@ -164,6 +202,13 @@ class NativeDeviceSim:
                       {"type": "telemetry", **self.telemetry()}]
 
     # --- HTTP ---------------------------------------------------------------------------------
+
+    async def pair_http(self, client: httpx.AsyncClient) -> int:
+        """The owner held the pairing button: tell the hub (works before the device is claimed
+        or enabled); returns the HTTP status."""
+        r = await client.post(f"/ingest/v1/devices/{self.device_id}/pairing",
+                              headers={"Authorization": f"Bearer {self.secret}"})
+        return r.status_code
 
     async def run_http(self, client: httpx.AsyncClient, period_s: float = 0.1,
                        stop: asyncio.Event | None = None) -> None:

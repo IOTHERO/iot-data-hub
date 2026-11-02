@@ -212,6 +212,35 @@ async def test_mqtt_device(backend: Backend) -> None:
     assert cmd["status"] == "confirmed" and cmd["transport"] == "mqtt"
 
 
+async def test_http_device_gets_commands_while_the_broker_is_up(backend: Backend) -> None:
+    """A device allowed every transport but running HTTP firmware: with the platform broker
+    connected, its commands still go to the HTTP queue it polls (found in the end-to-end check
+    of the three systems: they went to the broker and timed out)."""
+    b = backend
+    _, sara, _, device_id, secret = await owned_device(b)         # mqtt, http and tcp allowed
+    async with EmbeddedBroker() as broker:
+        mqtt = MqttIngest(b.services.ingest, Broker(broker_id="platform", host=broker.host,
+                                                    port=broker.port))
+        b.services.ingest.mqtt = mqtt
+        await mqtt.start()
+        try:
+            await b.wait(lambda: mqtt.connected)
+            sim = NativeDeviceSim(device_id, secret, {"relay_4": False})
+            relay = f"platform.devices.{device_id}.relay_4"
+            stop = asyncio.Event()
+            async with running(sim.run_http(b.client, 0.05, stop)):
+                await b.wait(lambda: relay in b.services.hub.latest)
+                result = await write(b, sara, relay, True)
+                assert result["result"] == "applied", result
+                assert sim.values["relay_4"] is True
+                stop.set()
+        finally:
+            await mqtt.stop()
+            b.services.ingest.mqtt = None
+    cmd = (await commands(b, sara, device_id))[0]
+    assert cmd["status"] == "confirmed" and cmd["transport"] == "http"
+
+
 async def test_broker_hooks(backend: Backend) -> None:
     b = backend
     _, _, _, device_id, secret = await owned_device(b, transports=["mqtt", "http"])
@@ -235,6 +264,34 @@ async def test_broker_hooks(backend: Backend) -> None:
         r = await b.client.post("/ingest/v1/broker/acl", headers=hook, json={
             "username": device_id, "topic": topic, "action": action})
         assert r.json() == {"result": expected}, (topic, action)
+    # a device that does not run yet (not claimed) may connect, to report pairing mode only
+    second = b.second                                        # type: ignore[attr-defined]
+    r = await b.client.post("/ingest/v1/broker/auth", headers=hook, json={
+        "username": second["device_id"], "password": second["device_secret"]})
+    assert r.json() == {"result": "allow"}
+    r = await b.client.post("/ingest/v1/broker/acl", headers=hook, json={
+        "username": device_id, "topic": f"d/{device_id}/pairing", "action": "publish"})
+    assert r.json() == {"result": "allow"}
+
+
+async def test_a_flooding_device_is_slowed_down(backend: Backend) -> None:
+    """HUB_DEVICE_MSG_RATE: beyond the burst a device's messages are dropped with 429; it
+    recovers by itself; other devices are not affected."""
+    b = backend
+    b.services.settings.device_msg_rate = 1.0
+    b.services.settings.device_msg_burst = 3
+    _, _, _, device_id, secret = await owned_device(b)
+    url = f"/ingest/v1/devices/{device_id}/telemetry"
+    auth = {"Authorization": f"Bearer {secret}"}
+    codes = [(await b.client.post(url, headers=auth, json={"values": {"power": i}})).status_code
+             for i in range(6)]
+    assert codes[:3] == [200, 200, 200] and set(codes[3:]) == {429}, codes
+    r = await b.client.post(url, headers=auth, json={"values": {"power": 1}})
+    assert r.json()["error"] == "device_rate_limited"
+    assert b.services.ingest.counters["rate_limited"] >= 3
+    b.services.ingest._buckets[device_id][1] -= 2             # two seconds later
+    r = await b.client.post(url, headers=auth, json={"values": {"power": 2}})
+    assert r.status_code == 200, r.text
 
 
 async def test_polled_write_has_a_command_life(backend: Backend) -> None:

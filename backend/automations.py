@@ -739,7 +739,9 @@ class AutomationEngine:
                         reached += bool(ok)
             out["reached"] = reached
             if not reached:
-                out = out | {"result": "failed", "message": "no contact was reached by SMS or call"}
+                retrying = bool(getattr(self.svc.sms, "pending", None))
+                out = out | {"result": "failed", "message": "no contact was reached by SMS or call"
+                             + (" yet; the hub keeps trying" if retrying else "")}
         if "email" not in action.channels:
             return out
         email = creator.user.email

@@ -83,6 +83,26 @@ Tag extras: `path` (appended to base_url, starts with `/`, may carry a query; on
 Connection: `host` (required), `port` (161), `security` (required): `{version: "2c", community_env}` or `{version: "3", username, auth_protocol md5|sha|sha224|sha256|sha384|sha512, auth_key_env, priv_protocol des|aes128|aes192|aes256, priv_key_env}` (protocol and key go together; priv needs auth), `timeout_ms` (2000), `retries` (1), `max_oids_per_request` (20).
 Tag extra: `oid` (required, numeric, e.g. `1.3.6.1.2.1.33.1.2.4.0`; MIB names are not resolved). TruthValue (1/2) maps to `bool`; counters to integers; text numbers to float. Quote `version: "3"`.
 
+## Omron FINS (`protocol: fins`)
+
+Connection: `host` (required), `port` (9600), `transport` (`tcp` | `udp`), `dest_network` (0), `dest_node` (0 = from the TCP handshake; UDP: the PLC's node, usually the last IP octet), `dest_unit` (0 = CPU), `src_node` (UDP: this hub's node; UDP needs both nodes), `timeout_ms` (2000), `word_order` (`little`), `max_words_per_read` (500), `max_gap_words` (16).
+Tag extra: `address` (required): `D100`/`DM100` (DM word), `CIO10.05` (bit 5 of CIO 10), `W20`, `H5.03`, `A100` (auxiliary, read-only). 32/64-bit types span 2/4 words.
+
+## Mitsubishi MELSEC MC (`protocol: mc`)
+
+Connection: `host` and `port` (both required; the MC port opened in GX Works, e.g. 5007; 3E frame, binary), `transport` (`tcp` | `udp`), `network` (0), `pc` (255), `module_io` (0x03FF), `station` (0), `timeout_ms` (2000), `word_order` (`little`), `max_points_per_read` (480), `max_gap_points` (16).
+Tag extra: `address` (required): word devices `D100`, `W1A` (hex), `R2000`, `ZR10000`, a bit of a word `D100.5` (read-only); bit devices `M10`, `X1F`/`Y20`/`B3` (hex), `L5` — bit devices are always `bool`. `X`, `SM`, `SD` are read-only.
+
+## EtherNet/IP, Logix (`protocol: enip`)
+
+Connection: `host` (required), `port` (44818), `slot` (0; ControlLogix: the CPU slot, CompactLogix 0, `null` = straight to the adapter, e.g. Micro800), `timeout_ms` (3000), `max_tags_per_request` (20).
+Tag extras: `tag` (required, Logix name: `Speed`, `Program:Main.Level`, `Motors[3].Current`), `bit` (0–63, one bit of an integer tag, `bool`, read-only). Types: BOOL `bool`, SINT/INT `int16`, UINT `uint16`, DINT `int32`, UDINT `uint32`, LINT `int64`, ULINT `uint64`, REAL `float32`, LREAL `float64`, STRING `string` (read-only).
+
+## IEC 60870-5-104 (`protocol: iec104`)
+
+The outstation pushes data: no `poll_interval_ms`. Connection: `host` (required), `port` (2404), `common_address` (required, 1–65534), `originator_address` (0), timers `t0_s` 30, `t1_s` 15, `t2_s` 10 (t2 < t1), `t3_s` 20, `k` 12, `w` 8 (w ≤ 2k/3 + 1), `interrogation_interval_s` (900; 0 = at start only), `counter_interrogation_interval_s` (900), `stale_after_s`.
+Tag extras: `ioa` (required), `type` (required): `single` → `bool`; `double` → `bool` or `uint16` (raw DPI 0–3); `step` → `int16`; `bitstring` → `uint32`; `normalized`/`float` → `float32`/`float64`; `scaled` → `int16`/`int32`; `integrated` (counters) → `int32`/`int64`. Writable only `single`, `double`, `normalized`, `scaled`, `float`; `command_ioa` (writable tags; default the same IOA), `select_before_operate` (false).
+
 ## Cross-file checks (`hub/config_loader.py`)
 
 Errors: duplicate `device_id`; duplicate tag name in a device; Modbus ranges overlapping within the same `register_type` (bit tags may share a register; the same bit twice is an error); tag wider than `max_registers_per_read`; same Modbus `host:port:unit_id` used by two devices; unknown `broker_ref`; overlapping MQTT topics on the same broker, wildcards included (`a/+/t` overlaps `a/x/t`; also between a device's own telemetry/command/status). With a disabled device involved, the collisions are warnings instead.
@@ -298,6 +318,110 @@ tags:
     data_type: int16
     oid: 1.3.6.1.2.1.33.1.2.1.0
     states: {1: unknown, 2: normal, 3: low, 4: depleted}
+```
+
+Omron CJ2 over FINS/TCP:
+
+```yaml
+device_id: plc_omron_01
+name: Packing line PLC
+site: kish
+area: packing
+protocol: fins
+connection:
+  host: 192.168.10.91
+tags:
+  - name: line_speed
+    unit: m/min
+    data_type: float32
+    address: D100
+  - name: conveyor_running
+    data_type: bool
+    address: CIO10.05
+  - name: batch_count
+    data_type: uint32
+    address: D110
+```
+
+Mitsubishi iQ-R over MC (3E binary):
+
+```yaml
+device_id: plc_melsec_01
+name: Press PLC
+site: kish
+area: press_shop
+protocol: mc
+connection:
+  host: 192.168.10.92
+  port: 5007
+tags:
+  - name: press_force
+    unit: kN
+    data_type: int16
+    address: D200
+  - name: guard_closed
+    data_type: bool
+    address: X1F
+  - name: cycle_target
+    data_type: int16
+    address: D300
+    access: read_write
+    min: 0
+    max: 600
+```
+
+Allen-Bradley CompactLogix over EtherNet/IP:
+
+```yaml
+device_id: plc_logix_01
+name: Mixer PLC
+site: kish
+area: mixing
+protocol: enip
+connection:
+  host: 192.168.10.93
+  slot: 0
+tags:
+  - name: mixer_speed
+    unit: rpm
+    data_type: float32
+    tag: Program:Main.MixerSpeed
+  - name: motor_current
+    unit: A
+    data_type: float32
+    tag: Motors[3].Current
+  - name: alarm_active
+    data_type: bool
+    tag: AlarmWord
+    bit: 2
+```
+
+Substation RTU over IEC 60870-5-104:
+
+```yaml
+device_id: rtu_sub_01
+name: Substation RTU
+site: kish
+area: substation
+protocol: iec104
+connection:
+  host: 192.168.10.94
+  common_address: 1
+tags:
+  - name: breaker_closed
+    data_type: bool
+    ioa: 1001
+    type: double
+  - name: feeder_power
+    unit: kW
+    data_type: float32
+    ioa: 2001
+    type: float
+  - name: energy_import
+    unit: kWh
+    data_type: int64
+    ioa: 3001
+    type: integrated
 ```
 
 A writable tag (any protocol) additionally needs `access: read_write`, `min` and `max`; see `config/devices/meter_01.yaml` (`demand_limit`).

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import sys
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -19,6 +23,51 @@ Auditor = Annotated[Principal, Depends(require("audit.read"))]
 Engineer = Annotated[Principal, Depends(require("config.edit"))]
 
 VERSION = "0.6.0"
+_cpu_seen: list[float] = []          # [process CPU seconds, wall clock] at the previous call
+
+
+def _memory_mb() -> float | None:
+    """Resident memory of this process (standard library only: /proc on Linux, psapi on
+    Windows); None where neither is available."""
+    status = Path("/proc/self/status")
+    if status.is_file():
+        for line in status.read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) / 1024
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class Counters(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t),
+                        ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t),
+                        ("PeakPagefileUsage", ctypes.c_size_t)]
+
+        c = Counters()
+        c.cb = ctypes.sizeof(c)
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE      # a 64-bit pseudo handle
+        kernel32.K32GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p,
+                                                     wintypes.DWORD]
+        if kernel32.K32GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(c), c.cb):
+            return c.WorkingSetSize / (1024 * 1024)
+    return None
+
+
+def _cpu_percent() -> float | None:
+    """CPU use of this process since the previous call, in % of one core."""
+    now = [time.process_time(), time.monotonic()]
+    before = _cpu_seen[:] or None
+    _cpu_seen[:] = now
+    if before is None or now[1] - before[1] < 0.5:
+        return None
+    return round(100 * (now[0] - before[0]) / (now[1] - before[1]), 1)
 
 
 @router.get("/api/health")
@@ -99,6 +148,45 @@ async def stats(svc: ServicesDep, _: Engineer) -> dict[str, Any]:
             "write_errors": s.write_errors, "last_write_error": s.last_write_error,
             "live_subscribers": svc.hub.bus.subscriber_count,
             "devices": {d: str(st.state) for d, st in sorted(svc.hub.statuses.items())}}
+
+
+@router.get("/api/system/platform")
+async def platform(svc: ServicesDep, _: Engineer) -> dict[str, Any]:
+    """The platform watching itself: process load, product devices and how they connect,
+    message counters (incl. dropped and rate-limited), live clients, the SMS retry queue."""
+    from hub.drivers.native import NativeDriver
+
+    natives = [d for d in svc.hub.drivers.values() if isinstance(d, NativeDriver)]
+    online = sum(1 for d in natives if str(svc.hub.statuses.get(d.device.device_id,
+                                                                   d.status).state) == "online")
+    ingest = svc.ingest
+    mqtt = getattr(ingest, "mqtt", None)
+    tcp = svc.tcp_ingest
+    watch = svc.health_watch
+    sms = svc.sms
+    return {
+        "process": {"pid": os.getpid(), "cpu_percent": _cpu_percent(),
+                    "memory_mb": round(m, 1) if (m := _memory_mb()) is not None else None,
+                    "uptime_s": int((utcnow() - svc.started_at).total_seconds()),
+                    "loop_lag_s": round(getattr(watch, "_loop_lag", 0.0), 3) if watch else None},
+        "devices": {"native": len(natives), "online": online,
+                    "all_drivers": len(svc.hub.drivers)},
+        "ingest": dict(getattr(ingest, "counters", {})),
+        "http_queued": sum(len(q) for q in getattr(ingest, "queues", {}).values()),
+        "tcp": {"enabled": tcp is not None, "open": len(getattr(ingest, "tcp", {})),
+                "sessions": getattr(tcp, "sessions", 0)},
+        "mqtt": {"enabled": mqtt is not None, "connected": bool(getattr(mqtt, "connected", False)),
+                 **dict(getattr(mqtt, "counters", {}))},
+        "live": {"subscribers": svc.hub.bus.subscriber_count,
+                 "slow_dropped": getattr(svc.hub.bus, "slow_dropped", 0)},
+        "sms": {"provider": svc.settings.sms_provider,
+                "retrying": len(getattr(sms, "pending", ()) or ()),
+                "given_up": getattr(sms, "given_up", 0)},
+        "pairing_open": len([u for u in getattr(svc.claims, "_pairing", {}).values()
+                             if u > utcnow()]) if svc.claims else 0,
+        "rate_limit": {"per_device_s": svc.settings.device_msg_rate,
+                       "burst": svc.settings.device_msg_burst},
+    }
 
 
 @router.get("/api/system/config")

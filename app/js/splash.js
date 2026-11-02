@@ -1,9 +1,9 @@
 // Start-up splash: the TiTiSwitch logo draws itself for about two seconds while the app loads
 // underneath, then fades away (a tap skips it). A short chime plays with it when the browser
 // allows sound before the first touch (installed apps usually do); otherwise it stays silent.
-// Sound can be turned off in "Me" (app.sound = "off").
+// The same file serves the app and the maker panel (maker/js/splash.js is a copy, kept equal by
+// tests/frontend); each passes its own sound setting.
 
-import { saved } from "./core.js";
 import { logo } from "./logo.js";
 
 const SHOW_MS = 2000;
@@ -11,7 +11,6 @@ const FADE_MS = 450;
 
 /** Two soft switch clicks, then a rising three-note chime (synthesised, no sound file). */
 function chime() {
-  if (saved.get("app.sound") === "off") return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
   if (!Ctx) return;
   let ctx;
@@ -42,7 +41,7 @@ function chime() {
 }
 
 /** Show the splash; resolves when it is gone. */
-export function splash() {
+export function splash({ sound = true } = {}) {
   const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const box = document.createElement("div");
   box.className = `splash ${still ? "still" : ""}`;
@@ -51,7 +50,7 @@ export function splash() {
   glow.className = "splash-glow";
   box.append(glow, logo());
   document.body.append(box);
-  chime();
+  if (sound) chime();
   return new Promise((done) => {
     let gone = false;
     const leave = () => {

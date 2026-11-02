@@ -84,6 +84,7 @@ class ProductRecord(BaseModel):
     identifier_pattern: str
     kind: str = "device"
     catalog: bool = False
+    require_pairing: bool = False
     created_at: datetime
     updated_at: datetime
     latest_published: int | None = None
@@ -197,11 +198,11 @@ class PlatformStore:
             async with self._tx(orgs) as conn:
                 row = await (await conn.execute(
                     "INSERT INTO products (org_id, code, name, category, description, image_ref,"
-                    " identifier_pattern, kind, catalog, created_by) VALUES "
-                    "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING product_id",
+                    " identifier_pattern, kind, catalog, require_pairing, created_by) VALUES "
+                    "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING product_id",
                     (org_id, product.code, product.name, product.category, product.description,
                      product.image_ref, product.identifier_pattern, product.kind,
-                     product.catalog, user_id))).fetchone()
+                     product.catalog, product.require_pairing, user_id))).fetchone()
         except psycopg.errors.UniqueViolation:
             raise PlatformError(f"product code {product.code} exists", "conflict") from None
         except psycopg.errors.ForeignKeyViolation:
@@ -231,9 +232,11 @@ class PlatformStore:
 
     async def update_product(self, orgs: set[str] | None, product_id: UUID,
                              changes: dict[str, Any]) -> ProductRecord:
-        """Name, category, description, kind, catalog; the identifier pattern only while the
+        """Name, category, description, kind, catalog, require_pairing; the identifier pattern
+        only while the
         product has no devices (identifiers already printed on labels never change)."""
-        allowed = {"name", "category", "description", "kind", "catalog", "identifier_pattern"}
+        allowed = {"name", "category", "description", "kind", "catalog", "require_pairing",
+                   "identifier_pattern"}
         bad = sorted(set(changes) - allowed)
         if bad:
             raise PlatformError(f"cannot change {', '.join(bad)}")
@@ -317,7 +320,8 @@ class PlatformStore:
     @staticmethod
     def _product_sql() -> str:
         return ("SELECT p.product_id, p.org_id, p.code, p.name, p.category, p.description, "
-                "p.image_ref, p.identifier_pattern, p.kind, p.catalog, p.created_at, "
+                "p.image_ref, p.identifier_pattern, p.kind, p.catalog, p.require_pairing, "
+                "p.created_at, "
                 "p.updated_at, (p.image IS NOT NULL) AS has_image, "
                 "(SELECT max(v.version) FROM product_versions v WHERE v.product_id = "
                 "p.product_id AND v.status = 'published') AS latest_published, "

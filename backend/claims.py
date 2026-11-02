@@ -9,6 +9,10 @@ manufacturer's reset, device credentials, and devices behind an edge hub.
   (unknown identifier, wrong code, used code, locked, disabled or retired device), so the
   answer tells nothing about which devices exist. A device locks for CLAIM_LOCK_MINUTES after
   CLAIM_MAX_ATTEMPTS wrong codes; callers are rate limited per user and per address.
+* **Pairing mode** (product option require_pairing): the code is accepted only within
+  PAIRING_WINDOW_S after the device reported ``{"state": "pairing"}`` with its own credential
+  (its button held). A photo of the label is then not enough; firmware without it keeps the
+  option off.
 * A device owned by someone can only be claimed with a **transfer** code its owner asked for;
   the claim then moves the device (and the devices behind it) and ends every earlier access.
 * A **device credential** is a 256-bit secret for the device itself (flashed in production;
@@ -27,6 +31,7 @@ import hmac
 import io
 import logging
 import secrets
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -42,6 +47,7 @@ CODE_LENGTH = 12
 CLAIM_MAX_ATTEMPTS = 5
 CLAIM_LOCK_MINUTES = 15
 CLAIMS_PER_USER_HOUR = 10
+PAIRING_WINDOW_S = 120
 _LOOKALIKE = str.maketrans({"O": "0", "I": "1", "L": "1"})
 INVALID = "identifier or claim code is not valid"
 
@@ -73,6 +79,18 @@ class ClaimService:
             log.warning("HUB_DATA_KEY is not set: claim codes are keyed with the JWT secret "
                         "(changing it makes printed codes invalid)")
         self._key = key.encode("utf-8")
+        self._pairing: dict[str, datetime] = {}      # device_id -> pairing mode open until
+
+    def pairing_started(self, device_id: str) -> None:
+        """The device (signed in with its credential) is in pairing mode: claims of it are
+        accepted for PAIRING_WINDOW_S."""
+        now = self.clock()
+        self._pairing = {d: until for d, until in self._pairing.items() if until > now}
+        self._pairing[device_id] = now + timedelta(seconds=PAIRING_WINDOW_S)
+
+    def pairing_open(self, device_id: str) -> bool:
+        until = self._pairing.get(device_id)
+        return until is not None and until > self.clock()
 
     @property
     def store(self) -> Any:
@@ -186,6 +204,10 @@ class ClaimService:
                 client_addr=client_addr,
                 detail={"device_id": target.device_id if target else None})
             raise Invalid(INVALID, code="invalid_claim")
+        if target.require_pairing and not self.pairing_open(target.device_id):
+            # the right code, but nobody is at the device: the code stays unused, no lockout
+            raise Invalid("hold the device's pairing button until it shows pairing mode, "
+                          "then try again", code="pairing_required")
         if target.owner_org == org_id:
             raise Conflict("the device already belongs to this organization",
                            code="already_owner")
@@ -229,17 +251,24 @@ class ClaimService:
                 "qr": self.qr(target.identifier, code)}
 
     async def release(self, principal: Principal, device_id: str, client_addr: str | None
-                      ) -> None:
-        """The owner removes the device from its account (and every share ends)."""
+                      ) -> dict[str, Any]:
+        """The owner removes the device from its account (and every share ends). The old
+        label code was used by this owner, so a fresh one-time code comes back: whoever gets the
+        device next (a buyer, a new tenant, the same owner again) can add it with it."""
         await self._owner(principal, device_id)
         target = await self._record(device_id)
         if target.parent_device_id is not None:
             raise Invalid("remove it through its edge hub", code="child_device")
         ids = await self.store.claims.release(device_id, "sold", self.clock())
         await self._stop(ids)
+        code = new_code()
+        await self.store.claims.issue_codes({device_id: self.code_hash(device_id, code)},
+                                            "activation", principal.user_id)
         await self.store.add_auth_audit("device_released", principal.username,
                                         user_id=principal.user_id, client_addr=client_addr,
                                         detail={"device_id": device_id, "devices": len(ids)})
+        return {"identifier": target.identifier, "claim_code": format_code(code),
+                "qr": self.qr(target.identifier, code)}
 
     async def reset(self, principal: Principal, device_id: str, client_addr: str | None
                     ) -> dict[str, Any]:

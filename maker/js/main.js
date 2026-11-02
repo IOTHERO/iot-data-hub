@@ -4,6 +4,8 @@ import { api, busy, errorText, h, icon, lang, loadLanguage, logout, saved, sessi
   toast } from "./core.js";
 import { ctx } from "./ui.js";
 import { startPickers } from "./picker.js";
+import { logo as brandLogo } from "./logo.js";
+import { splash } from "./splash.js";
 
 const root = document.getElementById("root");
 const VIEWS = {
@@ -26,6 +28,7 @@ const SECTION = { product: "products", device: "production" };
 
 const accent = saved.get("accent");
 if (accent) document.documentElement.dataset.accent = accent;
+splash({ sound: false });                   // the logo plays (silently: a desk tool) while loading
 
 async function loadContext() {
   ctx.me = await api("GET", "/api/auth/me");
@@ -89,7 +92,7 @@ function nav(active) {
   return h("nav", { class: "nav", "aria-label": t("shell.menu") },
     h("div", { class: "brand" }, ctx.brand?.has_logo
       ? h("img", { class: "logo img", src: `/api/public/brand/${ctx.org.org_id}/logo`, alt: "" })
-      : h("span", { class: "logo" }, icon("logo", 20)),
+      : h("span", { class: "logo mark" }, brandLogo({ wordmark: false })),
     h("span", { class: "stack tight txt" }, h("span", { class: "name" }, ctx.brand?.display_name || ctx.org.name),
       h("span", { class: "role" }, t("shell.panel")))),
     MENU.map(([key, label, ic]) => h("a", { href: `#/${key}`,
@@ -98,6 +101,7 @@ function nav(active) {
     h("div", { class: "foot" }, orgSwitch,
       h("div", { class: "who" }, h("span", { class: "small strong" }, ctx.me.display_name),
         h("span", { class: "tiny muted ltr" }, ctx.me.email || ctx.me.username)),
+      h("span", { class: "tiny muted powered" }, t("shell.powered")),
       h("a", { href: "#/login", class: "item", onclick: async (ev) => {
         ev.preventDefault();
         await logout();
@@ -143,9 +147,9 @@ function showLogin() {
     if (location.hash === after) render();
   }));
   root.replaceChildren(h("div", { class: "auth" }, h("div", { class: "card" },
-    h("div", { class: "brand" }, h("span", { class: "logo" }, icon("logo", 20)),
-      h("span", { class: "stack tight" }, h("span", { class: "name" }, t("shell.title")),
-        h("span", { class: "role" }, t("shell.panel")))),
+    h("div", { class: "auth-logo" }, brandLogo()),
+    h("div", { class: "auth-name" }, h("span", { class: "name" }, t("shell.brand")),
+      h("span", { class: "role" }, t("shell.panel"))),
     h("h1", { class: "h1" }, t("auth.sign_in")),
     h("p", { class: "small muted" }, t("auth.lead")), form,
     h("button", { class: "btn sm", type: "button", onclick: async () => {

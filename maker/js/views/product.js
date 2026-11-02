@@ -193,10 +193,12 @@ export default async function productPage(args) {
       disabled: !manage || p.devices > 0 });
     const catalog = checkbox(t("product.catalog"), p.catalog);
     catalog.box.disabled = !manage;
+    const pairing = checkbox(t("product.pairing"), p.require_pairing);
+    pairing.box.disabled = !manage;
     const save = h("button", { class: "btn primary", disabled: !manage }, t("common.save"));
     save.addEventListener("click", busy(save, async () => {
       const changes = { name: nameIn.value.trim(), category: category.value, description: description.value,
-        kind: kind.value, catalog: catalog.box.checked };
+        kind: kind.value, catalog: catalog.box.checked, require_pairing: pairing.box.checked };
       if (!pattern.disabled) changes.identifier_pattern = pattern.value.trim().toUpperCase();
       state.product = await api("PATCH", `/api/platform/products/${productId}`, changes);
       ctx.products = null;
@@ -222,7 +224,8 @@ export default async function productPage(args) {
           h("div", { class: "span" }, field(t("product.pattern"), pattern,
             p.devices > 0 ? t("product.pattern_fixed") : t("products.pattern_help"))),
           h("div", { class: "span" }, field(t("product.description"), description)),
-          h("div", { class: "span" }, catalog.el, h("span", { class: "help" }, t("product.catalog_help")))),
+          h("div", { class: "span" }, catalog.el, h("span", { class: "help" }, t("product.catalog_help"))),
+          h("div", { class: "span" }, pairing.el, h("span", { class: "help" }, t("product.pairing_help")))),
         h("div", { class: "row end" }, save)),
       h("aside", { class: "col-side" },
         h("section", { class: "card pad" }, h("span", { class: "h3" }, t("product.picture_title")),

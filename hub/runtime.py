@@ -69,6 +69,7 @@ class LiveBus:
     def __init__(self, queue_size: int = 1000) -> None:
         self.queue_size = queue_size
         self._subscribers: set[asyncio.Queue[dict[str, Any] | None]] = set()
+        self.slow_dropped = 0       # subscribers disconnected because they fell behind
 
     def subscribe(self) -> asyncio.Queue[dict[str, Any] | None]:
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(self.queue_size)
@@ -88,6 +89,7 @@ class LiveBus:
                 queue.put_nowait(event)
             except asyncio.QueueFull:
                 self._subscribers.discard(queue)
+                self.slow_dropped += 1
                 with contextlib.suppress(asyncio.QueueFull):
                     queue.get_nowait()
                     queue.put_nowait(None)  # tells the consumer it was dropped

@@ -80,3 +80,10 @@ def test_router_pages_exist() -> None:
     assert len(pages) == 9
     for page in pages:
         assert (MAKER / "js" / page).is_file(), page
+
+
+def test_logo_and_splash_are_the_apps_own() -> None:
+    # one TiTiSwitch logo and splash: the maker panel carries an exact copy of the app's files
+    app = MAKER.parent / "app" / "js"
+    for name in ("logo.js", "splash.js"):
+        assert (MAKER / "js" / name).read_bytes() == (app / name).read_bytes(), name

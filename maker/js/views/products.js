@@ -49,6 +49,7 @@ function newProduct() {
   const pattern = input({ dir: "ltr", required: true, class: "input key", value: "" });
   const kind = select([["device", t("product.kind_device")], ["edge_hub", t("product.kind_edge_hub")]]);
   const catalog = checkbox(t("product.catalog"), false);
+  const pairing = checkbox(t("product.pairing"), false);
   const description = h("textarea", { class: "input", rows: 3 });
   const preview = h("span", { class: "small muted ltr mono" });
   let patternTouched = false;
@@ -72,13 +73,15 @@ function newProduct() {
       h("div", { class: "span" }, field(t("product.pattern"), pattern, t("products.pattern_help"))),
       h("div", { class: "span" }, preview),
       h("div", { class: "span" }, field(t("product.description"), description)),
-      h("div", { class: "span" }, catalog.el)),
+      h("div", { class: "span" }, catalog.el),
+      h("div", { class: "span" }, pairing.el, h("span", { class: "help" }, t("product.pairing_help")))),
     submit);
   form.addEventListener("submit", busy(submit, async () => {
     const record = await api("POST", "/api/platform/products", {
       org_id: ctx.org.org_id, code: code.value.trim(), name: nameIn.value.trim(),
       category: category.value.trim() || undefined, description: description.value.trim() || undefined,
-      identifier_pattern: pattern.value.trim(), kind: kind.value, catalog: catalog.box.checked });
+      identifier_pattern: pattern.value.trim(), kind: kind.value, catalog: catalog.box.checked,
+      require_pairing: pairing.box.checked });
     ctx.products = null;
     toast(t("products.created"), "ok");
     location.hash = `#/product/${record.product_id}/io`;

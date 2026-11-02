@@ -164,6 +164,11 @@ class Settings(BaseModel):
     # 20000 / 10000 on Linux; on Windows select() watches 512 sockets for the whole hub.
     tcp_ingest_max_connections: int | None = Field(default=None, ge=1, le=1_000_000)
     http_max_connections: int | None = Field(default=None, ge=1, le=1_000_000)
+    # messages per second one native device may send (telemetry, state, acks), with a burst of
+    # device_msg_burst; beyond, its messages are dropped (HTTP: 429) so one faulty or hijacked
+    # device cannot flood the hub. 0 = no limit.
+    device_msg_rate: float = Field(default=5.0, ge=0, le=10_000)
+    device_msg_burst: int = Field(default=30, ge=1, le=100_000)
     platform_broker: str | None = None          # broker_id in brokers.yaml for native devices
     platform_topic_prefix: str = ""
     platform_shared_group: str | None = None    # $share/<group>/ for several hub nodes
@@ -354,6 +359,8 @@ class Settings(BaseModel):
             if e.get("HUB_TCP_MAX_CONNECTIONS") else None,
             http_max_connections=int(e["HUB_HTTP_MAX_CONNECTIONS"])
             if e.get("HUB_HTTP_MAX_CONNECTIONS") else None,
+            device_msg_rate=float(e.get("HUB_DEVICE_MSG_RATE", 5)),
+            device_msg_burst=int(e.get("HUB_DEVICE_MSG_BURST", 30)),
             platform_broker=e.get("HUB_PLATFORM_BROKER") or None,
             platform_topic_prefix=e.get("HUB_PLATFORM_TOPIC_PREFIX", ""),
             platform_shared_group=e.get("HUB_PLATFORM_SHARED_GROUP") or None,

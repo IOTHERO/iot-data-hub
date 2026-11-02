@@ -197,7 +197,8 @@ def convert_modbus_address(
             )
         address = int(digits[1:]) - 1
     else:
-        return register_type, None, f"address_style {style!r} must be protocol, one_based or modicon"
+        return (register_type, None,
+                f"address_style {style!r} must be protocol, one_based or modicon")
     if address < 0:
         return rtype, None, f"address {raw!r} converts to {address} (style {style}); check the base"
     if rtype is None:
@@ -341,7 +342,8 @@ def simple_tags(
 def required_text(rec: dict[str, Any], key: str, where: str, res: Result) -> Any:
     value = rec.get(key)
     if value in (None, TODO):
-        res.errors.append(f"{where}: {key} is required (got {'TODO' if value is TODO else 'blank'})")
+        got = "TODO" if value is TODO else "blank"
+        res.errors.append(f"{where}: {key} is required (got {got})")
         return None
     return str(value)
 

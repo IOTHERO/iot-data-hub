@@ -8,12 +8,19 @@ and the replies to SMS commands. HUB_SMS_PROVIDER picks the gateway (backend.set
 
 Received SMS reach the hub through ``POST /api/sms/inbound`` (backend.api.home), which the
 provider calls with HUB_SMS_INBOUND_TOKEN.
+
+A real gateway is wrapped in ``RetryingSms``: a message or call the gateway refuses or cannot
+reach is tried again in the background (after 30 s, 2 min and 10 min; at most MAX_PENDING
+waiting), so an alarm SMS survives a short outage of the provider or the internet.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -116,6 +123,74 @@ class Kavenegar:
         return ok
 
 
+RETRY_DELAYS_S = (30.0, 120.0, 600.0)
+MAX_PENDING = 500
+
+
+@dataclass
+class RetryingSms:
+    """A gateway whose failures are retried in the background (alarms must arrive)."""
+
+    gateway: SmsGateway
+    delays: tuple[float, ...] = RETRY_DELAYS_S
+    pending: deque[tuple[str, str, str, int]] = field(default_factory=deque)
+    given_up: int = 0
+    _wake: asyncio.Event | None = field(default=None, repr=False)
+    _task: asyncio.Task[None] | None = field(default=None, repr=False)
+
+    @property
+    def enabled(self) -> bool:
+        return self.gateway.enabled
+
+    async def send(self, to: str, text: str) -> bool:
+        return await self._try("sms", to, text)
+
+    async def call(self, to: str, text: str) -> bool:
+        return await self._try("call", to, text)
+
+    async def _try(self, kind: str, to: str, text: str) -> bool:
+        if await self._once(kind, to, text):
+            return True
+        if len(self.pending) >= MAX_PENDING:
+            self.given_up += 1
+            log.error("SMS retry queue full: %s to %s dropped", kind, mask_phone(to))
+            return False
+        self.pending.append((kind, to, text, 0))
+        self._start()
+        return False
+
+    async def _once(self, kind: str, to: str, text: str) -> bool:
+        try:
+            return await (self.gateway.send(to, text) if kind == "sms"
+                          else self.gateway.call(to, text))
+        except Exception:  # noqa: BLE001 - a gateway bug must not lose the alarm silently
+            log.exception("SMS gateway raised")
+            return False
+
+    def _start(self) -> None:
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._worker(), name="sms-retry")
+
+    async def _worker(self) -> None:
+        while self.pending:
+            kind, to, text, tries = self.pending.popleft()
+            await asyncio.sleep(self.delays[tries])
+            if await self._once(kind, to, text):
+                log.info("%s to %s sent on retry %d", kind, mask_phone(to), tries + 1)
+            elif tries + 1 < len(self.delays):
+                self.pending.append((kind, to, text, tries + 1))
+            else:
+                self.given_up += 1
+                log.error("%s to %s not delivered after %d retries", kind, mask_phone(to),
+                          len(self.delays))
+
+    async def close(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+
+
 def make_sms(settings: Settings) -> SmsGateway:
     if settings.sms_provider == "log":
         return SmsOutbox()
@@ -126,5 +201,5 @@ def make_sms(settings: Settings) -> SmsGateway:
         # the key is in the URL: httpx must not log the requests (it does at INFO)
         logging.getLogger("httpx").setLevel(max(logging.WARNING,
                                                 logging.getLogger("httpx").level))
-        return Kavenegar(settings.sms_api_key, settings.sms_sender)
+        return RetryingSms(Kavenegar(settings.sms_api_key, settings.sms_sender))
     return NoSms()

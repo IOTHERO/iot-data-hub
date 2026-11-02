@@ -136,6 +136,7 @@ class ProductPatch(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     kind: Literal["device", "edge_hub"] | None = None
     catalog: bool | None = None
+    require_pairing: bool | None = None
     identifier_pattern: str | None = Field(default=None, min_length=3, max_length=64)
 
 
@@ -145,7 +146,7 @@ async def update_product(product_id: UUID, body: ProductPatch, svc: ServicesDep,
     """The product's details (the code never changes; the identifier pattern only until the
     first device is registered). Empty category / description clear them."""
     changes = body.model_dump(exclude_unset=True)
-    for key in ("name", "kind", "catalog", "identifier_pattern"):
+    for key in ("name", "kind", "catalog", "require_pairing", "identifier_pattern"):
         if key in changes and changes[key] is None:
             del changes[key]
     for key in ("category", "description"):
@@ -701,10 +702,12 @@ async def set_room(device_id: str, body: RoomIn, svc: ServicesDep, p: Viewer) ->
     return {"device_id": device_id, "room": room}
 
 
-@router.delete("/my/devices/{device_id}", status_code=204)
+@router.delete("/my/devices/{device_id}")
 async def release_my_device(device_id: str, svc: ServicesDep, p: Sharer,
-                            request: Request) -> None:
-    await svc.claims.release(p, device_id, client_addr(request))
+                            request: Request) -> dict[str, Any]:
+    """Remove the device from the caller's account; returns a fresh one-time claim code for
+    whoever adds it next."""
+    return await svc.claims.release(p, device_id, client_addr(request))
 
 
 @router.post("/my/devices/{device_id}/transfer")

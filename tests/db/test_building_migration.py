@@ -37,6 +37,8 @@ def test_up_down_up(database_url: str) -> None:
     assert set(NEW_TABLES) <= _tables(database_url)
     assert {"control.setpoint", "control.command", "calc.publish"} <= _permissions(database_url)
 
+    rollback(database_url, "0019_claim_pairing")
+
     rollback(database_url, "0018_home_levels")
 
     rollback(database_url, "0017_switches_sms")
@@ -70,13 +72,15 @@ def test_up_down_up(database_url: str) -> None:
                                      "0015_maker_home",
                                      "0016_home_maker_plus",
                                      "0017_switches_sms",
-                                     "0018_home_levels"]
+                                     "0018_home_levels",
+                                     "0019_claim_pairing"]
     assert set(NEW_TABLES) <= _tables(database_url)
 
 
 def test_rollback_rules(database_url: str) -> None:
     with pytest.raises(RollbackError, match="no rollback script"):
         rollback(database_url, "0007_directory_users")
+    rollback(database_url, "0019_claim_pairing")
     rollback(database_url, "0018_home_levels")
     rollback(database_url, "0017_switches_sms")
     rollback(database_url, "0016_home_maker_plus")
