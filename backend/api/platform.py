@@ -587,7 +587,7 @@ async def my_devices(svc: ServicesDep, p: Viewer, org: OrgQuery = None,
     orgs = await _my_orgs(svc, p, org)
     if not orgs:
         return []
-    rows, _ = await svc.store.platform.devices(orgs, limit=limit, offset=offset)
+    rows = await _my_rows(svc, p, orgs, limit=limit, offset=offset)
     return await _mine(svc, orgs, rows)
 
 
@@ -796,7 +796,7 @@ async def my_summary(svc: ServicesDep, p: Viewer, org: OrgQuery = None) -> dict[
                            "energy_kwh": None, "alerts": 0}
     if not orgs:
         return out
-    rows, _ = await svc.store.platform.devices(orgs, limit=200)
+    rows = await _my_rows(svc, p, orgs)
     mine = await _mine(svc, orgs, rows)
     temps: list[float] = []
     power = energy = 0.0
@@ -870,7 +870,7 @@ async def my_notifications(svc: ServicesDep, p: Viewer, org: OrgQuery = None
     orgs = await _my_orgs(svc, p, org)
     if not orgs:
         return []
-    rows, _ = await svc.store.platform.devices(orgs, limit=200)
+    rows = await _my_rows(svc, p, orgs)
     since = datetime.now(UTC) - timedelta(hours=48)
     out: list[dict[str, Any]] = []
     for d in await _mine(svc, orgs, rows):
@@ -940,7 +940,20 @@ async def _my_level(svc: ServicesDep, p: Principal, device_id: str, permission: 
             p.role_permissions.get(g.role_id, frozenset())}
     if not orgs:
         return None
-    return (await svc.store.accounts.access_levels(orgs, [device_id])).get(device_id)
+    level = (await svc.store.accounts.access_levels(orgs, [device_id])).get(device_id)
+    if level is not None and not (await svc.levels.device(p, orgs, device_id))[0]:
+        return None                      # outside the caller's access level: not his device
+    return level
+
+
+async def _my_rows(svc: ServicesDep, p: Principal, orgs: set[str], *, limit: int = 200,
+                   offset: int = 0) -> list[Any]:
+    """The device rows of the caller's homes, without those outside his access level."""
+    rows, _ = await svc.store.platform.devices(orgs, limit=limit, offset=offset)
+    if not svc.levels.limited(p):
+        return list(rows)
+    seen = await svc.levels.visible(p, orgs, [r.device_id for r in rows])
+    return [r for r in rows if r.device_id in seen]
 
 
 @router.get("/my/devices/{device_id}/view")
@@ -958,8 +971,20 @@ async def my_device_view(device_id: str, svc: ServicesDep, p: Viewer) -> DeviceV
         await _my_level(svc, p, device_id, "device.operate") in ("owner", "operator")
     owner = await svc.store.accounts.owner_org(None, device_id)
     labels = await svc.store.home.labels([owner], [device_id]) if owner else {}
-    rooms = await svc.store.accounts.rooms(await _my_orgs(svc, p), [device_id])
-    return _view(svc, record, product, template, level, operate, labels, rooms.get(device_id))
+    orgs = await _my_orgs(svc, p)
+    rooms = await svc.store.accounts.rooms(orgs, [device_id])
+    _, limits = await svc.levels.device(p, orgs, device_id)
+    return _view(svc, record, product, template, level, operate, labels, rooms.get(device_id),
+                 _writer(svc, limits, device_id))
+
+
+def _writer(svc: ServicesDep, limits: Any, device_id: str) -> Any:
+    """Which outputs the caller's access level lets him write now (None: every output)."""
+    if limits is None:
+        return None
+    now = svc.hub.clock()
+    hours = limits.in_hours(now)
+    return lambda key: hours and limits.may_write(device_id, key)
 
 
 @router.get("/my/views")
@@ -972,6 +997,10 @@ async def my_device_views(svc: ServicesDep, p: Viewer, org: OrgQuery = None
     if not orgs:
         return []
     rows, _ = await svc.store.platform.devices(orgs, limit=500)
+    limited = svc.levels.limited(p)
+    seen = await svc.levels.visible(p, orgs, [r.device_id for r in rows]) if limited else {}
+    if limited:
+        rows = [r for r in rows if r.device_id in seen]
     ids = [r.device_id for r in rows]
     levels = await svc.store.accounts.access_levels(orgs, ids)
     operate_orgs = {g.org_id for g in p.grants if g.org_id and "device.operate" in
@@ -993,12 +1022,14 @@ async def my_device_views(svc: ServicesDep, p: Viewer, org: OrgQuery = None
         can = level in ("owner", "operator") and \
             operate.get(record.device_id) in ("owner", "operator")
         out.append(_view(svc, record, products[record.product_id], template, level, can,
-                         labels, rooms.get(record.device_id)))
+                         labels, rooms.get(record.device_id),
+                         _writer(svc, seen.get(record.device_id), record.device_id)))
     return out
 
 
 def _view(svc: ServicesDep, record: Any, product: Any, template: Any, level: str,
-          operate: bool, labels: dict[tuple[str, str], Any], room: str | None) -> DeviceView:
+          operate: bool, labels: dict[tuple[str, str], Any], room: str | None,
+          may_write: Any = None) -> DeviceView:
     device_id = record.device_id
     tags = []
     for t in sorted(template.tags, key=lambda t: (t.ui.order, t.key)):
@@ -1014,7 +1045,8 @@ def _view(svc: ServicesDep, record: Any, product: Any, template: Any, level: str
             icon=label.icon if label else None, favorite=bool(label and label.favorite),
             mode=label.mode if label else "toggle", pulse_s=label.pulse_s if label else None,
             data_type=str(t.data_type), unit=t.unit, min=t.min, max=t.max, states=t.states,
-            writable=operate and str(t.access) == "read_write",
+            writable=operate and str(t.access) == "read_write" and (
+                may_write is None or may_write(t.key)),
             ui=t.ui.model_dump(exclude_none=True),
             value=sample.value if sample else None, ts=sample.timestamp if sample else None,
             quality=str(sample.quality) if sample else None))

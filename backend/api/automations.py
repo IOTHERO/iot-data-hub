@@ -26,7 +26,7 @@ from backend.automations import (
     next_runs,
 )
 from backend.deps import ServicesDep, client_addr, require
-from backend.errors import Conflict, Invalid, NotFound
+from backend.errors import Conflict, Forbidden, Invalid, NotFound
 from backend.rbac import Principal
 from hub import jalali
 from hub.storage.automations import AutomationRecord, HolidayRecord, RunRecord, SceneRecord
@@ -42,6 +42,24 @@ def _orgs(p: Principal, permission: str, org_id: str) -> set[str] | None:
     if not p.can_in_org(permission, org_id):
         raise NotFound("organization not found")
     return p.orgs_with(permission)
+
+
+async def _own(svc: ServicesDep, p: Principal, org_id: str, created_by: int | None) -> None:
+    """An access level with "own only": he changes only the scenes / automations he made."""
+    if not await svc.levels.owns(p, org_id, created_by):
+        raise Forbidden("your access level changes only the scenes and automations you made",
+                        code="not_yours")
+
+
+async def _scene_of(svc: ServicesDep, p: Principal, org_id: str, scene_id: int) -> Any:
+    try:
+        scene = await svc.store.automations.scene(_orgs(p, "automation.manage", org_id),
+                                                  scene_id)
+    except PlatformError as exc:
+        raise _nf(exc) from None
+    if scene.org_id != org_id:
+        raise NotFound("scene not found")
+    return scene
 
 
 def _nf(exc: PlatformError) -> Exception:
@@ -122,6 +140,8 @@ async def list_scenes(org_id: str, svc: ServicesDep, p: Viewer) -> list[SceneRec
 async def _save_scene(svc: ServicesDep, p: Principal, org_id: str, scene_id: int | None,
                       body: SceneIn, request: Request) -> SceneRecord:
     orgs = _orgs(p, "automation.manage", org_id)
+    if scene_id is not None and svc.levels.limited(p):
+        await _own(svc, p, org_id, (await _scene_of(svc, p, org_id, scene_id)).created_by)
     await _check_refs(svc, org_id, writes=[a for a in body.actions
                                            if isinstance(a, WriteAction)], reads=[], scenes=[])
     try:
@@ -152,6 +172,8 @@ async def update_scene(org_id: str, scene_id: int, body: SceneIn, svc: ServicesD
 @router.delete("/organizations/{org_id}/scenes/{scene_id}", status_code=204)
 async def delete_scene(org_id: str, scene_id: int, svc: ServicesDep, p: Manager,
                        request: Request) -> None:
+    if svc.levels.limited(p):
+        await _own(svc, p, org_id, (await _scene_of(svc, p, org_id, scene_id)).created_by)
     if not await svc.store.automations.delete_scene(_orgs(p, "automation.manage", org_id),
                                                     org_id, scene_id):
         raise NotFound("scene not found")
@@ -165,7 +187,7 @@ async def run_scene(org_id: str, scene_id: int, svc: ServicesDep, p: Viewer,
                     request: Request) -> dict[str, Any]:
     """Run now, with the caller's own rights (a viewer's writes are refused one by one)."""
     try:
-        scene = await svc.store.automations.scene(_orgs(p, "device.view", org_id), scene_id)
+        scene = await svc.store.automations.scene(_orgs(p, "scene.run", org_id), scene_id)
     except PlatformError as exc:
         raise _nf(exc) from None
     if scene.org_id != org_id:
@@ -205,6 +227,9 @@ async def list_automations(org_id: str, svc: ServicesDep, p: Viewer) -> list[Aut
 async def _save(svc: ServicesDep, p: Principal, org_id: str, automation_id: int | None,
                 body: AutomationIn, request: Request) -> AutomationOut:
     orgs = _orgs(p, "automation.manage", org_id)
+    if automation_id is not None and svc.levels.limited(p):
+        await _own(svc, p, org_id, (await _record(svc, p, org_id, automation_id,
+                                                  "automation.manage")).created_by)
     await _check_automation(svc, org_id, body)
     try:
         record = await svc.store.automations.save_automation(
@@ -243,6 +268,9 @@ async def update_automation(org_id: str, automation_id: int, body: AutomationIn,
 @router.delete("/organizations/{org_id}/automations/{automation_id}", status_code=204)
 async def delete_automation(org_id: str, automation_id: int, svc: ServicesDep, p: Manager,
                             request: Request) -> None:
+    if svc.levels.limited(p):
+        await _own(svc, p, org_id, (await _record(svc, p, org_id, automation_id,
+                                                  "automation.manage")).created_by)
     if not await svc.store.automations.delete_automation(
             _orgs(p, "automation.manage", org_id), org_id, automation_id):
         raise NotFound("automation not found")

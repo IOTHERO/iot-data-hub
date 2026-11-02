@@ -609,3 +609,19 @@ dialog.sheet.picker { max-height: 78vh; }
 .out.dual .out-name { -webkit-line-clamp: 1; line-clamp: 1; }
 .out.dual .dual-keys { width: 100%; grid-template-columns: 1fr 1fr; }
 .out.dual .dual-key { min-height: 36px; }
+
+/* --- access levels: cards with tick icons, the editor's tick rows ------------------------------ */
+.level-card { gap: 10px; text-align: start; width: 100%; color: inherit; font: inherit; }
+.level-card.editable { cursor: pointer; transition: border-color .25s var(--ease), transform .18s var(--ease); }
+@media (hover: hover) { .level-card.editable:hover { border-color: var(--accent-line); } }
+.level-card.editable:active { transform: scale(.985); }
+.perm-chips { gap: 6px; }
+.perm-chip { width: 30px; height: 30px; border-radius: 10px; display: inline-flex; align-items: center;
+  justify-content: center; background: var(--surface); color: var(--faint); border: 1px solid var(--line); }
+.perm-chip svg.i { width: 15px; height: 15px; }
+.perm-chip.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+.tick-row { align-items: center; gap: 10px; }
+.tick-ico { width: 34px; height: 34px; border-radius: 11px; flex: none; background: var(--surface-2); color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center; }
+.tick-row:has(input:checked) .tick-ico { background: var(--accent-soft); color: var(--accent); }
+.scope-panel { padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }

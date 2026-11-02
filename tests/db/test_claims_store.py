@@ -19,6 +19,7 @@ pytestmark = pytest.mark.postgres
 
 
 def test_up_down_up(database_url: str) -> None:
+    rollback(database_url, "0018_home_levels")
     rollback(database_url, "0017_switches_sms")
     rollback(database_url, "0016_home_maker_plus")
     rollback(database_url, "0015_maker_home")
@@ -36,7 +37,8 @@ def test_up_down_up(database_url: str) -> None:
                                      "0014_versions_firmware",
                                      "0015_maker_home",
                                      "0016_home_maker_plus",
-                                     "0017_switches_sms"]
+                                     "0017_switches_sms",
+                                     "0018_home_levels"]
 
 
 async def test_codes_are_service_only(store: Any, database_url: str) -> None:
@@ -47,6 +49,7 @@ async def test_codes_are_service_only(store: Any, database_url: str) -> None:
     for table in ("device_claim_codes", "device_credentials"):
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             _sql(database_url, {"maker_a"}, f"SELECT 1 FROM {table}")  # noqa: S608
+    rollback(database_url, "0018_home_levels")
     rollback(database_url, "0017_switches_sms")
     rollback(database_url, "0016_home_maker_plus")
     rollback(database_url, "0015_maker_home")

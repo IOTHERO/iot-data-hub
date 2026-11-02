@@ -25,7 +25,15 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.api.platform import TEHRAN, OrgQuery, _mine, _my_level, _my_orgs, _number
+from backend.api.platform import (
+    TEHRAN,
+    OrgQuery,
+    _mine,
+    _my_level,
+    _my_orgs,
+    _my_rows,
+    _number,
+)
 from backend.deps import ServicesDep, client_addr, require
 from backend.errors import Conflict, Forbidden, Invalid, NotFound
 from backend.rbac import Principal
@@ -144,7 +152,7 @@ async def home_settings(org_id: str, svc: ServicesDep, p: Viewer) -> dict[str, A
 @router.put("/api/platform/organizations/{org_id}/settings")
 async def save_home_settings(org_id: str, body: SettingsIn, svc: ServicesDep, p: Viewer
                              ) -> dict[str, Any]:
-    _member(p, org_id, "org.members")
+    _member(p, org_id, "home.settings")
     values = body.model_dump(exclude_unset=True)
     if "tariff" in values and values["tariff"] is not None:
         values["tariff"] = body.tariff.model_dump() if body.tariff else {}
@@ -318,7 +326,7 @@ class ContactIn(BaseModel):
 @router.get("/api/platform/organizations/{org_id}/contacts")
 async def contacts(org_id: str, svc: ServicesDep, p: Viewer) -> dict[str, Any]:
     """Who the home alerts by SMS or call, and whether SMS commands are set up."""
-    _member(p, org_id, "org.members")
+    _member(p, org_id, "home.settings")
     return {"contacts": [c.model_dump() for c in await svc.store.home.contacts(org_id)],
             "pin_set": bool(await svc.store.home.sms_pin_hash(org_id)),
             "gateway": bool(getattr(svc.sms, "enabled", False))}
@@ -326,7 +334,7 @@ async def contacts(org_id: str, svc: ServicesDep, p: Viewer) -> dict[str, Any]:
 
 async def _save_contact(svc: ServicesDep, p: Principal, org_id: str, contact_id: int | None,
                         body: ContactIn, request: Request) -> dict[str, Any]:
-    _member(p, org_id, "org.members")
+    _member(p, org_id, "home.settings")
     from backend.sms import normalize_phone
 
     if contact_id is None and len(await svc.store.home.contacts(org_id)) >= 10:
@@ -363,7 +371,7 @@ async def update_contact(org_id: str, contact_id: int, body: ContactIn, svc: Ser
 @router.delete("/api/platform/organizations/{org_id}/contacts/{contact_id}", status_code=204)
 async def delete_contact(org_id: str, contact_id: int, svc: ServicesDep, p: Viewer,
                          request: Request) -> None:
-    _member(p, org_id, "org.members")
+    _member(p, org_id, "home.settings")
     if not await svc.store.home.delete_contact(org_id, contact_id):
         raise NotFound("contact not found")
     await svc.store.add_auth_audit("contact_deleted", p.username, user_id=p.user_id,
@@ -379,7 +387,7 @@ class PinIn(BaseModel):
 async def set_sms_pin(org_id: str, body: PinIn, svc: ServicesDep, p: Viewer,
                       request: Request) -> None:
     """The PIN an SMS command must carry (``شب 4821``); kept only as a hash."""
-    _member(p, org_id, "org.members")
+    _member(p, org_id, "home.settings")
     from backend.security import hash_password
 
     await svc.store.home.set_sms_pin_hash(org_id, hash_password(body.pin) if body.pin else None)
@@ -479,7 +487,7 @@ class TimerIn(BaseModel):
 async def _operating_org(svc: ServicesDep, p: Principal, device_id: str) -> str:
     """One of the caller's homes that may run automations on the device."""
     for m in await svc.accounts.memberships(p):
-        if p.can_in_org("automation.manage", m.org_id):
+        if p.can_in_org("timer.manage", m.org_id):
             level = (await svc.store.accounts.access_levels({m.org_id}, [device_id])).get(device_id)
             if level in ("owner", "operator"):
                 return m.org_id
@@ -548,7 +556,7 @@ async def timers(device_id: str, svc: ServicesDep, p: Viewer) -> list[dict[str, 
 async def cancel_timer(device_id: str, automation_id: int, svc: ServicesDep, p: Viewer) -> None:
     for t in await timers(device_id, svc, p):
         if t["automation_id"] == automation_id:
-            _member(p, t["org_id"], "automation.manage")
+            _member(p, t["org_id"], "timer.manage")
             await svc.store.automations.delete_automation(None, t["org_id"], automation_id)
             svc.automations.cancel(automation_id)       # a running cycle stops (output off)
             return
@@ -585,7 +593,10 @@ async def energy(svc: ServicesDep, p: Viewer, org: OrgQuery = None,
     """kWh per day (Tehran days) and per device for the last ``days`` days, from kWh counters
     (daily rise) or else power readings (hourly averages); the current Jalali month's total
     and its cost with the home's tariff (tiers, peak hours, fixed charge, tax)."""
+    energy_orgs = p.orgs_with("energy.view")
     orgs = await _my_orgs(svc, p, org)
+    if energy_orgs is not None:          # a level without the energy tick sees none
+        orgs &= energy_orgs
     now = datetime.now(UTC)
     local_today = now.astimezone(TEHRAN).date()
     first_day = local_today - timedelta(days=days - 1)
@@ -599,7 +610,7 @@ async def energy(svc: ServicesDep, p: Viewer, org: OrgQuery = None,
     tariff = {}
     if org is not None:
         tariff = (await svc.store.home.settings(org)).get("tariff") or {}
-    rows, _ = await svc.store.platform.devices(orgs, limit=200) if orgs else ([], 0)
+    rows = await _my_rows(svc, p, orgs) if orgs else []
     for d in await _mine(svc, orgs, rows) if orgs else []:
         template = await svc.store.platform.template(d.product_id, d.version)
         counters = [t for t in template.tags if (t.unit or "") == "kWh"]
@@ -666,8 +677,9 @@ def sms_signature(key: str, device_id: str, counter: int, items: list[str]) -> s
     return hmac.new(raw, text, hashlib.sha256).hexdigest()[:16]
 
 
-async def _owner_home(svc: ServicesDep, p: Principal, device_id: str) -> str:
-    orgs = p.orgs_with("device.share")
+async def _owner_home(svc: ServicesDep, p: Principal, device_id: str,
+                      permission: str = "device.share") -> str:
+    orgs = p.orgs_with(permission)
     owner = await svc.store.accounts.owner_org(orgs, device_id) if orgs != set() else None
     if owner is None:
         raise NotFound("device not found")
@@ -712,6 +724,158 @@ async def delete_sms(device_id: str, svc: ServicesDep, p: Viewer) -> None:
     await svc.ingest.send_message(device_id, {"type": "config", "sms": {"enabled": False}})
 
 
+# --- access levels of a home: ticks, scope, hours ------------------------------------------------
+
+
+class ScopeIn(BaseModel):
+    """Which devices / outputs (any of them; all empty = every device of the home)."""
+    rooms: list[str] = Field(default=[], max_length=50)
+    groups: list[int] = Field(default=[], max_length=50)
+    outputs: list[OutputRef] = Field(default=[], max_length=200)
+
+
+class HoursIn(BaseModel):
+    weekdays: list[Annotated[int, Field(ge=0, le=6)]] | None = Field(default=None, min_length=1)
+    start: str = Field(alias="from", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end: str = Field(alias="to", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    model_config = {"populate_by_name": True}
+
+
+class LevelIn(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    permissions: list[str] = Field(min_length=1, max_length=20)
+    scope: ScopeIn = ScopeIn()
+    schedule: HoursIn | None = None
+    own_only: bool = False
+
+
+def _no_escalation(p: Principal, org_id: str, permissions: Any) -> None:
+    """Nobody gives a permission he does not hold himself in this home."""
+    missing = sorted(x for x in permissions if not p.can_in_org(x, org_id))
+    if missing:
+        raise Forbidden("you cannot give permissions you do not have: " + ", ".join(missing),
+                        code="escalation")
+
+
+def _level_body(body: LevelIn) -> dict[str, Any]:
+    from backend.levels import HOME_PERMISSIONS
+
+    perms = set(body.permissions)
+    unknown = perms - set(HOME_PERMISSIONS)
+    if unknown:
+        raise Invalid("unknown permissions: " + ", ".join(sorted(unknown)), code="invalid_level")
+    if "device.view" not in perms:
+        raise Invalid("every level sees the devices (device.view)", code="invalid_level")
+    scope = body.scope.model_dump(mode="json")
+    return {"name": body.name.strip(), "permissions": sorted(perms),
+            "scope": {k: v for k, v in scope.items() if v},
+            "schedule": body.schedule.model_dump(mode="json", by_alias=True)
+            if body.schedule else None, "own_only": body.own_only}
+
+
+@router.get("/api/platform/organizations/{org_id}/levels")
+async def levels(org_id: str, svc: ServicesDep, p: Viewer) -> dict[str, Any]:
+    """The home's access levels: the built-in ones and those its owner made, with their
+    permissions (the ticks) and limits; ``permissions``: every tick there is."""
+    from backend.levels import BUILT_IN, HOME_PERMISSIONS
+
+    _member(p, org_id, "org.members")
+    perms = await svc.auth.role_permissions()
+    return {"permissions": list(HOME_PERMISSIONS),
+            "built_in": [{"role_id": r, "permissions": sorted(
+                set(perms.get(r, ())) & set(HOME_PERMISSIONS))} for r in BUILT_IN],
+            "levels": [lv.model_dump() for lv in await svc.store.home.levels(org_id)]}
+
+
+async def _save_level(svc: ServicesDep, p: Principal, org_id: str, role_id: str | None,
+                      body: LevelIn, request: Request) -> dict[str, Any]:
+    _member(p, org_id, "org.members")
+    values = _level_body(body)
+    _no_escalation(p, org_id, values["permissions"])
+    try:
+        saved = await svc.store.home.save_level(org_id, role_id, user_id=p.user_id, **values)
+    except Exception as exc:  # noqa: BLE001 - the unique (home, name)
+        if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+            raise Conflict("this home already has a level with this name",
+                           code="duplicate_name") from None
+        raise
+    if saved is None:
+        raise NotFound("level not found")
+    svc.auth.forget_roles()              # its permissions count now, not in 10 s
+    svc.levels.forget()
+    await svc.store.add_auth_audit("level_saved", p.username, user_id=p.user_id,
+                                   client_addr=client_addr(request),
+                                   detail={"org_id": org_id, "role_id": saved,
+                                           "permissions": values["permissions"]})
+    return {"role_id": saved} | values
+
+
+@router.post("/api/platform/organizations/{org_id}/levels", status_code=201)
+async def create_level(org_id: str, body: LevelIn, svc: ServicesDep, p: Viewer,
+                       request: Request) -> dict[str, Any]:
+    return await _save_level(svc, p, org_id, None, body, request)
+
+
+@router.put("/api/platform/organizations/{org_id}/levels/{role_id}")
+async def update_level(org_id: str, role_id: str, body: LevelIn, svc: ServicesDep, p: Viewer,
+                       request: Request) -> dict[str, Any]:
+    return await _save_level(svc, p, org_id, role_id, body, request)
+
+
+@router.delete("/api/platform/organizations/{org_id}/levels/{role_id}", status_code=204)
+async def delete_level(org_id: str, role_id: str, svc: ServicesDep, p: Viewer,
+                       request: Request) -> None:
+    _member(p, org_id, "org.members")
+    result = await svc.store.home.delete_level(org_id, role_id)
+    if result == "missing":
+        raise NotFound("level not found")
+    if result == "in_use":
+        raise Conflict("members or open invitations still have this level; give them another "
+                       "first", code="level_in_use")
+    svc.auth.forget_roles()
+    svc.levels.forget()
+    await svc.store.add_auth_audit("level_deleted", p.username, user_id=p.user_id,
+                                   client_addr=client_addr(request),
+                                   detail={"org_id": org_id, "role_id": role_id})
+
+
+class MemberRoleIn(BaseModel):
+    role: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+
+
+@router.patch("/api/platform/organizations/{org_id}/members/{user_role_id}")
+async def change_member_role(org_id: str, user_role_id: int, body: MemberRoleIn,
+                             svc: ServicesDep, p: Viewer, request: Request) -> dict[str, Any]:
+    """Another role or access level for a member of the home (owner, member, viewer or a
+    level of this home). Not above the caller's own rights; the last owner stays an owner."""
+    from backend.levels import BUILT_IN
+
+    _member(p, org_id, "org.members")
+    own_levels = {lv.role_id for lv in await svc.store.home.levels(org_id)}
+    if body.role not in BUILT_IN and body.role not in own_levels:
+        raise Invalid("not a role or access level of this home", code="invalid_role")
+    perms = (await svc.auth.role_permissions()).get(body.role, frozenset())
+    _no_escalation(p, org_id, perms)
+    members = await svc.store.accounts.members(org_id)
+    target = next((m for m in members if m.user_role_id == user_role_id), None)
+    if target is None:
+        raise NotFound("member not found")
+    owners = [m for m in members if m.role_id == "customer_owner"]
+    if target.role_id == "customer_owner" and body.role != "customer_owner" and len(owners) < 2:
+        raise Conflict("a home needs an owner: make someone else owner first",
+                       code="last_owner")
+    if target.role_id == "customer_owner" and not p.can_in_org("org.manage", org_id) and \
+            not any(g.role_id == "customer_owner" and g.org_id == org_id for g in p.grants):
+        raise Forbidden("only an owner changes an owner", code="escalation")
+    await svc.store.home.set_member_role(org_id, user_role_id, body.role)
+    svc.levels.forget()
+    await svc.store.add_auth_audit("member_role_changed", p.username, user_id=target.user_id,
+                                   actor_id=p.user_id, client_addr=client_addr(request),
+                                   detail={"org_id": org_id, "from": target.role_id,
+                                           "to": body.role})
+    return {"user_role_id": user_role_id, "role": body.role}
+
+
 # --- live updates --------------------------------------------------------------------------------
 
 
@@ -720,7 +884,7 @@ async def _events(svc: ServicesDep, p: Principal, org: str | None) -> AsyncItera
         orgs = await _my_orgs(svc, p, org)
         if not orgs:
             return set()
-        rows, _ = await svc.store.platform.devices(orgs, limit=500)
+        rows = await _my_rows(svc, p, orgs, limit=500)
         return set(await svc.store.accounts.access_levels(orgs, [r.device_id for r in rows]))
 
     devices = await allowed()
@@ -830,7 +994,7 @@ async def open_ticket(device_id: str, body: TicketIn, svc: ServicesDep, p: Viewe
                       request: Request) -> TicketOut:
     """A support question or a warranty claim to the device's maker. The maker sees the
     device, the text and the sender's name (the buyer chose to write) — nothing else."""
-    org = await _owner_home(svc, p, device_id)
+    org = await _owner_home(svc, p, device_id, "ticket.manage")
     record = await svc.store.platform.device(None, device_id)
     if body.kind == "warranty" and not (record.warranty_until and
                                         record.warranty_until > svc.hub.clock()):
@@ -851,7 +1015,7 @@ async def open_ticket(device_id: str, body: TicketIn, svc: ServicesDep, p: Viewe
 async def _buyer_ticket(svc: ServicesDep, p: Principal, ticket_id: int
                         ) -> tuple[TicketRecord, list[MessageRecord]]:
     found = await svc.store.home.ticket(ticket_id)
-    if found is None or not p.can_in_org("device.share", found[0].owner_org_id):
+    if found is None or not p.can_in_org("ticket.manage", found[0].owner_org_id):
         raise NotFound("ticket not found")
     return found
 
@@ -860,7 +1024,7 @@ async def _buyer_ticket(svc: ServicesDep, p: Principal, ticket_id: int
 async def my_tickets(svc: ServicesDep, p: Viewer, device: str | None = None
                      ) -> list[TicketRecord]:
     orgs = [m.org_id for m in await svc.accounts.memberships(p)
-            if p.can_in_org("device.share", m.org_id)]
+            if p.can_in_org("ticket.manage", m.org_id)]
     return await svc.store.home.tickets(owner_orgs=orgs, device_id=device) if orgs else []
 
 

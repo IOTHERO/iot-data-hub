@@ -101,6 +101,7 @@ class ControlService:
         self._locks: dict[str, asyncio.Lock] = {}
         self.results: dict[str, int] = {}   # audit result -> count (metrics)
         self._last_write: dict[str, datetime] = {}
+        self.levels: Any = None              # backend.levels.LevelService (set by Services)
         self._expiry_task: asyncio.Task[None] | None = None
 
     # --- lifecycle ----------------------------------------------------------------------------
@@ -145,11 +146,11 @@ class ControlService:
             username=principal.username, client_addr=client_addr, tag_path=tag_path,
             requested_value=value, result="requested", reason=reason)
         try:
-            site, area, device_id, _ = split_path(tag_path)
+            site, area, device_id, key = split_path(tag_path)
             if site == PLATFORM_SITE:
-                if not await self._may_operate(principal, device_id):
-                    raise _Rejected("rejected_rbac", "no device.operate permission for this "
-                                    "device (owner or operator access)")
+                why = await self._may_operate(principal, device_id, key)
+                if why is not None:
+                    raise _Rejected("rejected_rbac", why)
             elif not principal.can_write(tag.write_class, site, area):
                 raise _Rejected("rejected_rbac", f"no {write_permission(tag.write_class)} "
                                 "permission for this area")
@@ -239,15 +240,31 @@ class ControlService:
 
     # --- gates --------------------------------------------------------------------------------
 
-    async def _may_operate(self, principal: Principal, device_id: str) -> bool:
+    async def _may_operate(self, principal: Principal, device_id: str, key: str
+                           ) -> str | None:
         """Platform device: device.operate through an organization grant of the caller, in an
-        organization with owner or operator access to the device."""
+        organization with owner or operator access to the device, and inside the scope and
+        hours of the caller's access level there (backend.levels). None = allowed, else why
+        not."""
+        refused = "no device.operate permission for this device (owner or operator access)"
         orgs = {g.org_id for g in principal.grants if g.org_id and "device.operate" in
                 principal.role_permissions.get(g.role_id, frozenset())}
         if not orgs:
-            return False
+            return refused
         levels = await self.store.accounts.access_levels(orgs, [device_id])
-        return levels.get(device_id) in ("owner", "operator")
+        if levels.get(device_id) not in ("owner", "operator"):
+            return refused
+        if self.levels is None or not self.levels.limited(principal):
+            return None
+        why = refused
+        for org in sorted(orgs):              # a home where he may do it is enough
+            if (await self.store.accounts.access_levels({org}, [device_id])).get(
+                    device_id) not in ("owner", "operator"):
+                continue
+            why = await self.levels.may_operate(principal, org, device_id, key, self.clock())
+            if why is None:
+                return None
+        return why
 
     def tag_for(self, tag_path: str) -> TagBase:
         found = self.hub.tags.get(tag_path)

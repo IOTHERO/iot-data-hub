@@ -18,6 +18,7 @@ pytestmark = pytest.mark.postgres
 
 
 def test_up_down_up(database_url: str) -> None:
+    rollback(database_url, "0018_home_levels")
     rollback(database_url, "0017_switches_sms")
     rollback(database_url, "0016_home_maker_plus")
     rollback(database_url, "0015_maker_home")
@@ -31,10 +32,12 @@ def test_up_down_up(database_url: str) -> None:
                                      "0014_versions_firmware",
                                      "0015_maker_home",
                                      "0016_home_maker_plus",
-                                     "0017_switches_sms"]
+                                     "0017_switches_sms",
+                                     "0018_home_levels"]
     with psycopg.connect(database_url, autocommit=True) as conn:
         conn.execute("INSERT INTO devices (device_id, name, site, area, protocol) "
                      "VALUES ('nat_1', 'N', 'kish', 'a', 'native')")
+    rollback(database_url, "0018_home_levels")
     rollback(database_url, "0017_switches_sms")
     rollback(database_url, "0016_home_maker_plus")
     rollback(database_url, "0015_maker_home")

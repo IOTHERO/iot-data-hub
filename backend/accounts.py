@@ -261,6 +261,17 @@ class AccountService:
                             client_addr: str | None) -> InvitationRecord:
         org = await self._org(principal, org_id, "org.members")
         allowed = INVITABLE_ROLES.get(org["kind"], ())
+        if role.startswith("lvl_") and org["kind"] == "customer":
+            if role in await self.store.home.levels_by_role([role]) and \
+                    (await self.store.home.levels_by_role([role]))[role].org_id == org_id:
+                allowed = (*allowed, role)
+        perms = principal.role_permissions.get(role)
+        if perms is None:
+            perms = (await self.store.role_permissions()).get(role, frozenset())
+        missing = sorted(x for x in perms if not principal.can_in_org(x, org_id))
+        if role in allowed and missing:
+            raise Forbidden("you cannot give permissions you do not have: " + ", ".join(missing),
+                            code="escalation")
         if role not in allowed:
             raise Invalid(f"role {role} cannot be given in a {org['kind']} organization "
                           f"({', '.join(allowed) or 'none'})", code="invalid_role")

@@ -34,6 +34,17 @@ class LabelRecord(BaseModel):
     pulse_s: float | None = None         # momentary: how long the push lasts
 
 
+class LevelRecord(BaseModel):
+    role_id: str
+    org_id: str
+    name: str
+    permissions: list[str] = []
+    scope: dict[str, Any] = {}
+    schedule: dict[str, Any] | None = None
+    own_only: bool = False
+    members: int = 0
+
+
 class ContactRecord(BaseModel):
     contact_id: int
     org_id: str
@@ -508,3 +519,90 @@ class HomeStore:
                 "UPDATE users SET is_active=false, email=NULL, email_verified_at=NULL, "
                 "display_name='—', username=%s, password_hash='!' WHERE user_id=%s",
                 (f"deleted.{user_id}", user_id))
+
+    # --- access levels of a home (0018) ---------------------------------------------------------
+
+    async def levels(self, org_id: str) -> list[LevelRecord]:
+        async with self._conn() as conn:
+            rows = await (await conn.execute(
+                "SELECT l.*, coalesce(array_agg(rp.permission_id ORDER BY rp.permission_id) "
+                "FILTER (WHERE rp.permission_id IS NOT NULL), '{}') AS permissions, "
+                "(SELECT count(*) FROM user_roles u WHERE u.role_id = l.role_id) AS members "
+                "FROM home_levels l LEFT JOIN role_permissions rp USING (role_id) "
+                "WHERE l.org_id=%s GROUP BY l.role_id ORDER BY l.name", (org_id,))).fetchall()
+        return [LevelRecord.model_validate(r) for r in rows]
+
+    async def levels_by_role(self, role_ids: Sequence[str]) -> dict[str, LevelRecord]:
+        """role_id -> the level (only custom levels; the built-in roles are not in it)."""
+        ids = [r for r in role_ids if r.startswith("lvl_")]
+        if not ids:
+            return {}
+        async with self._conn() as conn:
+            rows = await (await conn.execute(
+                "SELECT l.*, coalesce(array_agg(rp.permission_id ORDER BY rp.permission_id) "
+                "FILTER (WHERE rp.permission_id IS NOT NULL), '{}') AS permissions, 0 AS members "
+                "FROM home_levels l LEFT JOIN role_permissions rp USING (role_id) "
+                "WHERE l.role_id = ANY(%s) GROUP BY l.role_id", (ids,))).fetchall()
+        return {r["role_id"]: LevelRecord.model_validate(r) for r in rows}
+
+    async def save_level(self, org_id: str, role_id: str | None, *, name: str,
+                         permissions: Sequence[str], scope: dict[str, Any],
+                         schedule: dict[str, Any] | None, own_only: bool,
+                         user_id: int | None) -> str | None:
+        """Create (role_id None) or change a level; returns its role_id, None if not found."""
+        import secrets as _secrets
+
+        async with self._conn() as conn, conn.transaction():
+            if role_id is None:
+                role_id = "lvl_" + _secrets.token_hex(8)
+                await conn.execute("INSERT INTO roles (role_id, description) VALUES (%s,%s)",
+                                   (role_id, f"{org_id}: {name}"))
+                await conn.execute(
+                    "INSERT INTO home_levels (role_id, org_id, name, scope, schedule, own_only, "
+                    "created_by) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (role_id, org_id, name, Jsonb(scope), Jsonb(schedule) if schedule else None,
+                     own_only, user_id))
+            else:
+                cur = await conn.execute(
+                    "UPDATE home_levels SET name=%s, scope=%s, schedule=%s, own_only=%s, "
+                    "updated_at=now() WHERE role_id=%s AND org_id=%s",
+                    (name, Jsonb(scope), Jsonb(schedule) if schedule else None, own_only,
+                     role_id, org_id))
+                if cur.rowcount == 0:
+                    return None
+                await conn.execute("UPDATE roles SET description=%s WHERE role_id=%s",
+                                   (f"{org_id}: {name}", role_id))
+                await conn.execute("DELETE FROM role_permissions WHERE role_id=%s", (role_id,))
+            for perm in sorted(set(permissions)):
+                await conn.execute(
+                    "INSERT INTO role_permissions (role_id, permission_id) VALUES (%s,%s)",
+                    (role_id, perm))
+        return role_id
+
+    async def delete_level(self, org_id: str, role_id: str) -> str:
+        """'ok', 'missing' or 'in_use' (members or open invitations still have it)."""
+        async with self._conn() as conn, conn.transaction():
+            row = await (await conn.execute(
+                "SELECT (SELECT count(*) FROM user_roles WHERE role_id=%s) + "
+                "(SELECT count(*) FROM invitations WHERE role_id=%s AND accepted_at IS NULL "
+                "AND revoked_at IS NULL) AS n, "
+                "EXISTS (SELECT 1 FROM home_levels WHERE role_id=%s AND org_id=%s) AS found",
+                (role_id, role_id, role_id, org_id))).fetchone()
+            if not row["found"]:
+                return "missing"
+            if row["n"]:
+                return "in_use"
+            # accepted or ended invitations keep their history under a built-in role
+            await conn.execute("UPDATE invitations SET role_id='customer_member' "
+                               "WHERE role_id=%s", (role_id,))
+            await conn.execute("DELETE FROM roles WHERE role_id=%s", (role_id,))
+        return "ok"
+
+    async def set_member_role(self, org_id: str, user_role_id: int, role_id: str
+                              ) -> int | None:
+        """A member of the home gets another role or level; returns the member's user_id."""
+        async with self._conn() as conn:
+            row = await (await conn.execute(
+                "UPDATE user_roles SET role_id=%s WHERE user_role_id=%s AND org_id=%s "
+                "RETURNING user_id", (role_id, user_role_id, org_id))).fetchone()
+        return row["user_id"] if row else None

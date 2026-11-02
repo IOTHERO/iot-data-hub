@@ -972,39 +972,6 @@ export function me(state) {
   return page;
 }
 
-export function members(state, orgId) {
-  const list = h("div", { class: "stack" });
-  const email = field(t("share.email"), { type: "email", dir: "ltr" });
-  const role = h("select", { class: "input", "aria-label": t("members.role") },
-    ["customer_member", "customer_viewer", "customer_owner"].map((r) =>
-      h("option", { value: r }, t(`roles.${r}`))));
-  const invite = h("button", { class: "btn primary" }, t("members.invite"));
-  invite.addEventListener("click", busy(invite, async () => {
-    await api("POST", `/api/platform/organizations/${orgId}/invitations`,
-      { email: email.input.value.trim(), role: role.value });
-    email.input.value = "";
-    toast(t("share.sent"), "ok");
-  }));
-  async function draw() {
-    let rows;
-    try { rows = await api("GET", `/api/platform/organizations/${orgId}/members`); }
-    catch (err) { list.replaceChildren(h("p", {}, errorText(err))); return; }
-    list.replaceChildren(...rows.map((m) => h("div", { class: "reading" },
-      h("div", { class: "stack tight" }, h("span", {}, m.display_name),
-        h("span", { class: "tiny muted ltr" }, m.email || "")),
-      h("div", { class: "row" }, h("span", { class: "chip" }, t(`roles.${m.role_id}`)),
-        h("button", { class: "icon-btn", "aria-label": t("members.remove"), onclick: async () => {
-          if (!confirm(t("members.remove_confirm"))) return;
-          try {
-            await api("DELETE", `/api/platform/organizations/${orgId}/members/${m.user_role_id}`);
-            draw();
-          } catch (err) { toast(errorText(err), "err"); }
-        } }, icon("x"))))));
-  }
-  draw();
-  return h("div", { class: "page" }, header(t("members.title"), "#/me"), list,
-    h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("members.invite")),
-      email.el, role, invite));
-}
+export { members } from "./levels.js";
 
 export { home_ as home };
