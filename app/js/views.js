@@ -4,6 +4,7 @@ import { commandsSection, deleteAccount, groupsRow, newHome, sharesList, smsSect
   timersSection } from "./more.js";
 import { favoritesRow, outButton, sensorRow, smsSheet } from "./outputs.js";
 import { climateCard, climateKeys, climateSets } from "./climate.js";
+import { logo as brandLogo } from "./logo.js";
 import { api, changed, loading, section, viewsOf, dialog, errorText, h, home, icon, imageUrl, lang, loadLanguage, logout, name, num,
   saved, SCENE_TONE, session, setAccent, t, toast, when } from "./core.js";
 
@@ -153,7 +154,7 @@ export function login(brand = null) {
   }));
   const logo = brand?.has_logo
     ? h("img", { class: "brand-logo", src: `/api/public/brand/${brand.org_id}/logo`, alt: brand.display_name })
-    : h("div", { class: "brand" }, icon("home", "i lg"));
+    : h("div", { class: "hero-logo" }, brandLogo());
   return h("div", { class: "page" },
     h("div", { class: "hero" }, logo,
       h("h1", { class: "h1" }, brand ? brand.display_name : t("auth.welcome")),
@@ -961,13 +962,25 @@ export function notifications() {
 
 // --- me, organizations, members ------------------------------------------------------------------
 
-const ACCENTS = [["", "#E8B86A"], ["teal", "#7FD1C7"], ["violet", "#A99BFF"], ["coral", "#FF9F7A"]];
+/** The maker of the app: logo, managing director, phone and website (strings in i18n). */
+function company() {
+  const row = (ic, label, value) => h("div", { class: "reading" },
+    h("span", { class: "row" }, icon(ic), label), value);
+  return h("div", { class: "card stack company" }, brandLogo(),
+    row("user", t("company.ceo"), h("strong", {}, t("company.ceo_name"))),
+    row("call", t("company.phone"), h("a", { class: "link ltr", href: `tel:${t("company.tel")}` },
+      t("company.phone_text"))),
+    row("globe", t("company.site"), h("a", { class: "link ltr", href: t("company.site_url"),
+      target: "_blank", rel: "noopener" }, t("company.site_text"))));
+}
+
+const ACCENTS = [["", "#19B8D0"], ["gold", "#E8B86A"], ["teal", "#7FD1C7"], ["violet", "#A99BFF"], ["coral", "#FF9F7A"]];
 
 export function me(state) {
   const orgs = h("div", { class: "stack" });
   const invites = h("div", { class: "stack" });
   const accentRow = h("div", { class: "row wrap" }, ACCENTS.map(([key, color]) => h("button", {
-    class: `swatch sw-${key || "gold"} ${(document.documentElement.dataset.accent || "") === key ? "on" : ""}`,
+    class: `swatch sw-${key || "brand"} ${(document.documentElement.dataset.accent || "") === key ? "on" : ""}`,
     "aria-label": t("me.accent_x", { x: color }), onclick: () => { setAccent(key); go("#/me");
       window.dispatchEvent(new HashChangeEvent("hashchange")); } })));
   const page = h("div", { class: "page" },
@@ -1005,7 +1018,14 @@ export function me(state) {
           saved.set("app.presence", off ? null : "off");
           ev.target.textContent = off ? t("me.on") : t("me.off");
         } }, saved.get("app.presence") === "off" ? t("me.off") : t("me.on"))),
-      h("p", { class: "tiny muted lh" }, t("me.presence_help")))),
+      h("p", { class: "tiny muted lh" }, t("me.presence_help")),
+      h("div", { class: "row between" }, h("span", { class: "row" }, icon("bell"), t("me.sound")),
+        h("button", { class: "btn", onclick: (ev) => {
+          const off = saved.get("app.sound") === "off";
+          saved.set("app.sound", off ? null : "off");
+          ev.target.textContent = off ? t("me.on") : t("me.off");
+        } }, saved.get("app.sound") === "off" ? t("me.off") : t("me.on"))))),
+    section("star", t("company.title"), t("company.hint"), company()),
     section("user", t("sec.account"), null,
       h("button", { class: "btn danger block", onclick: async () => { await logout(); go("#/login"); } },
         icon("out"), " ", t("me.sign_out")),

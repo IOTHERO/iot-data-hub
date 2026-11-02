@@ -3,6 +3,7 @@
 import { api, h, icon, live, loadLanguage, saved, session, t } from "./core.js";
 import { startPickers } from "./picker.js";
 import { startChecks } from "./checks.js";
+import { splash } from "./splash.js";
 import { automationsPage } from "./auto.js";
 import * as more from "./more.js";
 import * as v from "./views.js";
@@ -21,6 +22,7 @@ const theme = saved.get("app.theme");
 if (theme) document.documentElement.dataset.theme = theme;
 const accent = saved.get("app.accent");
 if (accent) document.documentElement.dataset.accent = accent;
+splash();                                   // the logo plays while everything below loads
 
 async function render() {
   clearInterval(state.timer);
@@ -116,7 +118,7 @@ async function brand() {
     if (b.accent && !saved.get("app.accent")) {
       const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
       const [r, g, bl] = rgb(b.accent);
-      const options = { "": "#E8B86A", teal: "#7FD1C7", violet: "#A99BFF", coral: "#FF9F7A" };
+      const options = { "": "#19B8D0", gold: "#E8B86A", teal: "#7FD1C7", violet: "#A99BFF", coral: "#FF9F7A" };
       const nearest = Object.entries(options).sort(([, a], [, c]) => {
         const d = (x) => rgb(x).reduce((sum, v, i) => sum + (v - [r, g, bl][i]) ** 2, 0);
         return d(a) - d(c);

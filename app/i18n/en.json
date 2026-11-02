@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Smart Home"
+    "title": "TiTiSwitch"
   },
   "common": {
     "back": "Back",
@@ -187,7 +187,8 @@
     "presence": "Arrive / leave detection",
     "presence_help": "While the app is open, your location is compared with the home's so “arrive home” automations can run.",
     "on": "On",
-    "off": "Off"
+    "off": "Off",
+    "sound": "Start-up sound"
   },
   "members": {
     "title": "Members",
@@ -806,5 +807,17 @@
     "tools_hint": "Energy and notifications",
     "prefs_hint": "Language, theme and colour",
     "account": "Account"
+  },
+  "company": {
+    "title": "About TiTiSwitch",
+    "hint": "The maker of this app",
+    "ceo": "Managing director",
+    "ceo_name": "Yaser Mahdiyan",
+    "phone": "Phone",
+    "phone_text": "0911 110 3610",
+    "tel": "+989111103610",
+    "site": "Website",
+    "site_text": "TiTiSwitch.ir",
+    "site_url": "https://titiswitch.ir"
   }
 }

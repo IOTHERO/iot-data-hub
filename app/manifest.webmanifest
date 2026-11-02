@@ -1,6 +1,6 @@
 {
-  "name": "Smart Home",
-  "short_name": "Home",
+  "name": "TiTiSwitch",
+  "short_name": "TiTiSwitch",
   "start_url": "./#/home",
   "scope": "./",
   "display": "standalone",
