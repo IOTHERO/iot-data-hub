@@ -782,5 +782,29 @@
     "org_members": "Invite and remove members, make levels",
     "home_settings": "Place, tariff, contacts and SMS PIN",
     "ticket_manage": "Requests to the maker"
+  },
+  "sec": {
+    "today": "Today at home",
+    "today_hint": "Temperature, energy and alerts",
+    "quick": "Quick run",
+    "quick_hint": "Your scenes and shortcuts",
+    "groups": "Groups",
+    "groups_hint": "Several devices together",
+    "devices": "Devices",
+    "devices_hint": "All, or by room",
+    "control": "Control",
+    "control_hint": "Outputs, AC and settings",
+    "data": "Values",
+    "data_hint": "Chart and sensors",
+    "plan": "Schedules and commands",
+    "plan_hint": "Timers and multi-step commands",
+    "log": "History",
+    "log_hint": "What happened on the device",
+    "jump": "Sections of the page",
+    "homes_hint": "Homes, members and each home's settings",
+    "tools": "Tools",
+    "tools_hint": "Energy and notifications",
+    "prefs_hint": "Language, theme and colour",
+    "account": "Account"
   }
 }

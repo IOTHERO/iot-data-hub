@@ -120,6 +120,15 @@ export const home = {
   query(prefix = "?") { return this.id ? `${prefix}org=${encodeURIComponent(this.id)}` : ""; },
 };
 
+/** A section of a page: an icon tile, a title and a short hint, then its content. */
+export function section(ic, title, hint, ...content) {
+  return h("section", { class: "sec" },
+    h("div", { class: "sec-head" }, h("span", { class: "sec-ico" }, icon(ic)),
+      h("span", { class: "stack tight grow" }, h("h2", { class: "h2" }, title),
+        hint ? h("span", { class: "tiny muted" }, hint) : null)),
+    ...content);
+}
+
 /** The views of these devices (as /my/devices listed them) in one request, in the same order;
  * null where a device has none. */
 export async function viewsOf(devices, query = home.query()) {

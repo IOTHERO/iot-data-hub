@@ -155,18 +155,56 @@ svg.i.lg { width: 26px; height: 26px; }
 .scan .frame { position: absolute; inset: 18%; border: 3px solid var(--accent);
                border-radius: 22px; opacity: 0.8; }
 
-/* navigation */
-.nav { position: fixed; bottom: calc(14px + env(safe-area-inset-bottom)); inset-inline: 0;
-       margin: 0 auto; max-width: 488px; width: calc(100% - 32px); height: 68px;
-       border-radius: 26px; background: color-mix(in srgb, var(--bg-2) 92%, transparent);
-       border: 1px solid var(--line); display: flex; align-items: center;
-       justify-content: space-around; backdrop-filter: blur(16px); z-index: 10; }
-.nav a { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px;
-         color: var(--muted); text-decoration: none; min-width: 56px; min-height: 44px;
-         justify-content: center; }
-.nav a.on { color: var(--accent); }
-.nav a.fab { width: 56px; height: 56px; min-width: 0; margin-top: -34px; border-radius: 28px;
-             background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); }
+/* navigation: the glass capsule dock ------------------------------------------------------------- */
+.dock { position: fixed; bottom: calc(14px + env(safe-area-inset-bottom)); inset-inline: 0; z-index: 10;
+  margin: 0 auto; width: calc(100% - 32px); max-width: 440px; height: 66px; padding: 7px;
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center;
+  border-radius: 33px; isolation: isolate;
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03)),
+    color-mix(in srgb, var(--bg-2) 62%, transparent);
+  backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.25);
+  animation: dock-in .6s var(--spring) both; }
+@keyframes dock-in { from { opacity: 0; transform: translateY(24px) scale(.96); } }
+/* the pill: one column wide, moved by whole columns (RTL: to the left) */
+.dock-pill { position: absolute; top: 7px; bottom: 7px; inset-inline-start: 7px; z-index: -1;
+  width: calc((100% - 14px) / 5); border-radius: 26px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05));
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 6px 18px rgba(0,0,0,0.25), 0 0 22px var(--accent-glow);
+  transition: transform .55s cubic-bezier(.34, 1.4, .5, 1); }
+.dock-pill.at-0 { transform: translateX(0); }
+.dock-pill.at-1 { transform: translateX(100%); }
+.dock-pill.at-3 { transform: translateX(300%); }
+.dock-pill.at-4 { transform: translateX(400%); }
+[dir="rtl"] .dock-pill.at-1 { transform: translateX(-100%); }
+[dir="rtl"] .dock-pill.at-3 { transform: translateX(-300%); }
+[dir="rtl"] .dock-pill.at-4 { transform: translateX(-400%); }
+.dock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  height: 100%; border-radius: 26px; color: var(--muted); text-decoration: none; font-size: 10.5px;
+  transition: color .3s var(--ease), transform .2s var(--spring); -webkit-tap-highlight-color: transparent; }
+.dock-item svg.i { transition: transform .45s var(--spring), filter .3s; }
+.dock-item .dock-label { transition: opacity .3s var(--ease), transform .35s var(--ease); opacity: .75; }
+.dock-item.on { color: var(--accent); }
+.dock-item.on svg.i { transform: translateY(-1px) scale(1.12); filter: drop-shadow(0 0 8px var(--accent-glow)); }
+.dock-item.on .dock-label { opacity: 1; font-weight: 700; }
+.dock-item:active { transform: scale(.9); }
+@media (hover: hover) { .dock-item:not(.on):hover { color: var(--text); } }
+/* the add button: a lens above the glass, with a slow breathing glow */
+.dock-add { position: relative; justify-self: center; width: 54px; height: 54px; margin-top: -30px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--accent-ink);
+  background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--accent) 60%, #fff), var(--accent) 60%);
+  box-shadow: 0 10px 26px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.5), 0 0 0 5px rgba(11,13,18,0.55);
+  transition: transform .35s var(--spring), box-shadow .3s; }
+.dock-add-glow { position: absolute; inset: -6px; border-radius: 50%; z-index: -1;
+  background: radial-gradient(circle, var(--accent-glow), transparent 70%); animation: breathe 3.2s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { opacity: .5; transform: scale(.95); } 50% { opacity: 1; transform: scale(1.15); } }
+.dock-add svg.i { transition: transform .45s var(--spring); }
+.dock-add:active { transform: scale(.9); }
+.dock-add:active svg.i { transform: rotate(90deg); }
+@media (hover: hover) { .dock-add:hover { transform: translateY(-3px); } .dock-add:hover svg.i { transform: rotate(90deg); } }
 
 .toasts { position: fixed; top: calc(14px + env(safe-area-inset-top)); inset-inline: 16px;
           display: flex; flex-direction: column; gap: 8px; align-items: center; z-index: 20;
@@ -413,7 +451,7 @@ dialog.sheet::backdrop { animation: fade .3s ease; }
 .toast { animation: toast-in .4s var(--spring); }
 
 /* everything you can press answers at once */
-.btn, .icon-btn, .tab, .chip, .link, .dev, .out, .stat, .reading.pick, .nav a, .card.link-card, a.card {
+.btn, .icon-btn, .tab, .chip, .link, .dev, .out, .stat, .reading.pick, .card.link-card, a.card {
   transition: transform .18s var(--ease), background-color .25s var(--ease), border-color .25s var(--ease),
               box-shadow .3s var(--ease), color .2s var(--ease), opacity .2s; }
 .btn:active:not(:disabled), .icon-btn:active, .tab:active, .out:active, .reading.pick:active,
@@ -426,7 +464,6 @@ dialog.sheet::backdrop { animation: fade .3s ease; }
   .dev.on:hover { box-shadow: 0 14px 34px rgba(0,0,0,0.4), 0 0 0 1px var(--accent-line); }
   .out:not(.on):hover { border-color: var(--accent-line); color: var(--text); }
   .card.link-card:hover, a.card:hover { border-color: var(--line-2); transform: translateY(-1px); }
-  .nav a:not(.fab):hover { color: var(--text); }
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .input { transition: border-color .2s var(--ease), box-shadow .25s var(--ease); }
@@ -462,10 +499,6 @@ dialog.sheet::backdrop { animation: fade .3s ease; }
 
 /* the live dot, the bottom bar and the add button */
 .chip.ok .dot { animation: halo 2.4s var(--ease) infinite; }
-.nav a.on svg.i { animation: pop .45s var(--spring); }
-.nav a.fab { transition: transform .25s var(--spring), box-shadow .3s; }
-.nav a.fab:active { transform: scale(.92) rotate(90deg); }
-@media (hover: hover) { .nav a.fab:hover { box-shadow: 0 10px 30px var(--accent-glow); transform: translateY(-2px); } }
 
 /* waiting: a soft shimmer instead of a bare word */
 .loading { color: transparent; border-radius: 16px; min-height: 64px;
@@ -625,3 +658,58 @@ dialog.sheet.picker { max-height: 78vh; }
   display: inline-flex; align-items: center; justify-content: center; }
 .tick-row:has(input:checked) .tick-ico { background: var(--accent-soft); color: var(--accent); }
 .scope-panel { padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+
+/* --- circle to check (checks.js): the ring unwinds and its stroke flows into a tick ------------ */
+.ck { position: relative; display: inline-flex; width: 26px; height: 26px; flex: none; }
+.ck .ck-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0;
+  cursor: pointer; z-index: 1; }
+.ck svg { width: 26px; height: 26px; overflow: visible; }
+.ck-ring { fill: none; stroke: var(--line-2); stroke-width: 1.8; stroke-linecap: round;
+  stroke-dasharray: 100; stroke-dashoffset: 0; transform: rotate(-200deg); transform-origin: 12px 12px;
+  transition: stroke-dashoffset .38s cubic-bezier(.55, 0, .45, 1) .18s, stroke .3s .18s; }
+.ck-tick { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100; transition: stroke-dashoffset .22s ease-in; }
+.ck .ck-input:checked + svg .ck-ring { stroke: var(--accent); stroke-dashoffset: 100;
+  transition: stroke-dashoffset .38s cubic-bezier(.55, 0, .45, 1), stroke .2s; }
+.ck .ck-input:checked + svg .ck-tick { stroke-dashoffset: 0;
+  transition: stroke-dashoffset .34s cubic-bezier(.2, .8, .2, 1) .3s; }
+.ck .ck-input:checked + svg { filter: drop-shadow(0 0 6px var(--accent-glow)); }
+.ck .ck-input:focus-visible + svg .ck-ring { stroke: var(--accent); }
+.ck .ck-input:disabled { cursor: default; }
+.ck .ck-input:disabled + svg { opacity: .55; }
+/* a radio: the ring closes around a dot */
+.ck-radio .ck-ring { stroke-dashoffset: 0; transform: rotate(-90deg); }
+.ck-dot { fill: var(--accent); transform: scale(0); transform-origin: 12px 12px; transition: transform .3s var(--spring); }
+.ck-radio .ck-input:checked + svg .ck-ring { stroke-dashoffset: 0; }
+.ck-radio .ck-input:checked + svg .ck-dot { transform: scale(1); }
+/* the label of what is not ticked fades to gray; ticked comes back to full colour */
+label:has(.ck) { transition: color .4s var(--ease); }
+label:has(.ck-input:not(:checked)) > span:not(.ck), label:has(.ck-input:not(:checked)) .tick-ico { color: var(--faint); transition: color .4s var(--ease); }
+label:has(.ck-input:not(:checked)) .tiny.muted { opacity: .7; }
+@media (prefers-reduced-motion: reduce) { .ck-ring, .ck-tick, .ck-dot { transition: none !important; } }
+
+/* --- sections: a clear head (icon tile, title, hint) and room between steps --------------------- */
+.sec { display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 72px; }
+.sec + .sec { margin-top: 6px; }
+.sec-head { display: flex; align-items: center; gap: 12px; padding-inline: 2px; }
+.sec-ico { width: 34px; height: 34px; border-radius: 12px; flex: none; display: inline-flex; align-items: center;
+  justify-content: center; color: var(--accent); background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-line); }
+.sec-ico svg.i { width: 17px; height: 17px; }
+.sec-head .h2 { font-size: 16px; }
+/* a section with nothing in it (no scenes, no shortcuts yet) does not show an empty head */
+.sec:not(:has(> :not(.sec-head):not(.hidden):not(:empty))) { display: none; }
+
+/* --- the jump bar of the device page: sticky glass, the section on screen lit --------------------- */
+.jumpbar { position: sticky; top: 8px; z-index: 6; display: flex; gap: 6px; padding: 5px; overflow-x: auto;
+  scrollbar-width: none; border-radius: 22px; border: 1px solid rgba(255,255,255,0.10);
+  background: color-mix(in srgb, var(--bg-2) 70%, transparent);
+  backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.35); }
+.jump { flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px;
+  padding: 0 12px; border: 0; border-radius: 17px; background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 12.5px; transition: background-color .3s var(--ease), color .3s, transform .15s var(--spring); }
+.jump svg.i { width: 15px; height: 15px; }
+.jump.on { background: rgba(255,255,255,0.10); color: var(--accent); font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12); }
+.jump:active { transform: scale(.94); }

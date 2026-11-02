@@ -2,6 +2,7 @@
 
 import { api, h, icon, live, loadLanguage, saved, session, t } from "./core.js";
 import { startPickers } from "./picker.js";
+import { startChecks } from "./checks.js";
 import { automationsPage } from "./auto.js";
 import * as more from "./more.js";
 import * as v from "./views.js";
@@ -99,6 +100,7 @@ await loadLanguage(saved.get("app.lang") || "fa");       // Persian first; Engli
 document.title = t("app.title");
 await brand();
 startPickers({ h, icon: (n) => icon(n), t, sheetClass: "sheet" });
+startChecks();
 render();
 
 /** ?brand=<maker org>: the maker's name on the start page and its nearest accent colour

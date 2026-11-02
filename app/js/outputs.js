@@ -173,7 +173,7 @@ export function favoritesRow(views, redraw) {
   const favs = views.filter(Boolean).flatMap((v) => v.tags.filter((x) => x.favorite && isOutput(x))
     .map((x) => ({ v, x })));
   if (!favs.length) return null;
-  return h("section", { class: "stack tight" }, h("h2", { class: "h2" }, t("home.favorites")),
+  return h("section", { class: "stack tight" }, h("span", { class: "label" }, t("home.favorites")),
     h("div", { class: "fav-row" }, favs.map(({ v, x }) => {
       const on = x.value === true;
       const offline = v.device.state !== "online";

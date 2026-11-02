@@ -4,7 +4,7 @@ import { commandsSection, deleteAccount, groupsRow, newHome, sharesList, smsSect
   timersSection } from "./more.js";
 import { favoritesRow, outButton, sensorRow, smsSheet } from "./outputs.js";
 import { climateCard, climateKeys, climateSets } from "./climate.js";
-import { api, changed, loading, viewsOf, dialog, errorText, h, home, icon, imageUrl, lang, loadLanguage, logout, name, num,
+import { api, changed, loading, section, viewsOf, dialog, errorText, h, home, icon, imageUrl, lang, loadLanguage, logout, name, num,
   saved, SCENE_TONE, session, setAccent, t, toast, when } from "./core.js";
 
 export const go = (route) => { location.hash = route; };
@@ -34,15 +34,28 @@ function header(title, back = "#/home", sub = null, right = null) {
     right || h("span", { class: "icon-btn hidden" }));
 }
 
+// the glass capsule dock: four places and the add button in the middle; a light pill slides
+// (with a spring) from the place you were to the one you are on
+const DOCK = [["home", "nav.home", "home", "home"], ["auto/scenes", "nav.scenes", "star", "scenes"],
+  null, ["auto/automations", "nav.automations", "sliders", "automations"], ["me", "nav.me", "user", "me"]];
+let dockWas = 0;
+
 export function nav(active) {
-  const item = (route, key, ic, on = route) => h("a", { href: `#/${route}`,
-    class: active === on ? "on" : "", "aria-current": active === on ? "page" : null }, icon(ic), t(key));
-  return h("nav", { class: "nav", "aria-label": t("nav.label") },
-    item("home", "nav.home", "home"),
-    item("auto/scenes", "nav.scenes", "star", "scenes"),
-    h("a", { href: "#/add", class: "fab", "aria-label": t("nav.add") }, icon("plus", "i lg")),
-    item("auto/automations", "nav.automations", "sliders", "automations"),
-    item("me", "nav.me", "user"));
+  const at = Math.max(0, DOCK.findIndex((d) => d && d[3] === active));
+  const pill = h("span", { class: `dock-pill at-${dockWas}`, "aria-hidden": "true" });
+  const items = DOCK.map((d) => (d === null
+    ? h("a", { href: "#/add", class: "dock-add", "aria-label": t("nav.add") },
+      h("span", { class: "dock-add-glow", "aria-hidden": "true" }), icon("plus", "i lg"))
+    : h("a", { href: `#/${d[0]}`, class: `dock-item ${d[3] === active ? "on" : ""}`,
+      "aria-current": d[3] === active ? "page" : null }, icon(d[2]), h("span", { class: "dock-label" }, t(d[1])))));
+  const dock = h("nav", { class: "dock", "aria-label": t("nav.label") }, pill, ...items);
+  if (at !== dockWas) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {   // after the first paint: slide
+      pill.classList.replace(`at-${dockWas}`, `at-${at}`);
+      dockWas = at;
+    }));
+  }
+  return dock;
 }
 
 function online(dev) { return dev.state === "online"; }
@@ -243,11 +256,15 @@ export function home_(state) {
     icon("bell"));
   const avatar = h("a", { class: "avatar", href: "#/me", "aria-label": t("nav.me") },
     (state.me?.display_name || "?").trim().charAt(0));
+  // the order a person thinks in: how is the home, do something now, my groups, every device
   const page = h("div", { class: "page" },
     h("div", { class: "row between" },
       h("div", { class: "stack tight" }, h("span", { class: "greet" }, t(greeting())), homeBtn),
       h("div", { class: "row" }, bell, avatar)),
-    groupsBox, stats, scenes, favsBox, rooms, grid);
+    section("bolt", t("sec.today"), t("sec.today_hint"), stats),
+    section("star", t("sec.quick"), t("sec.quick_hint"), scenes, favsBox),
+    section("relay", t("sec.groups"), t("sec.groups_hint"), groupsBox),
+    section("home", t("sec.devices"), t("sec.devices_hint"), rooms, grid));
   let room = saved.get("app.room") || "all";
   let groupsKey = "";
   let homeList = [];
@@ -426,8 +443,12 @@ export function device(state, id) {
         d.warranty_until ? h("span", { class: "chip" }, t("device.warranty_until", { date: jalali(d.warranty_until) }))
           : null,
         d.access !== "owner" ? h("span", { class: "chip accent" }, t(`access.${d.access}`)) : null)];
+    const control = [];                  // the page in the order of use: control, values,
+    const data = [];                     // plans, what happened
+    const plan = [];
+    const log = [];
     for (const set of climates) {
-      parts.push(climateCard(id, set, draw, { online: online(d), canWrite: d.access !== "viewer" }));
+      control.push(climateCard(id, set, draw, { online: online(d), canWrite: d.access !== "viewer" }));
     }
     if (outputs.length) {
       const onCount = outputs.filter((x) => x.value === true).length;
@@ -449,7 +470,7 @@ export function device(state, id) {
       editing ? t("out.edit_done") : t("out.edit_mode")) : null;
       const sms = operate ? h("button", { class: `btn sms-btn ${online(d) ? "" : "urgent"}`,
         onclick: () => smsSheet(d, outputs, d.access === "owner") }, icon("chat"), t("sms.quick")) : null;
-      parts.push(h("section", { class: "card stack big-card" },
+      control.push(h("section", { class: "card stack big-card" },
         h("div", { class: "row between" }, h("h2", { class: "h2" }, t("device.outputs")),
           h("div", { class: "row" }, h("span", { class: "small accent-text" }, t("device.on_count",
             { n: num(onCount), total: num(outputs.length) })), naming)),
@@ -458,30 +479,43 @@ export function device(state, id) {
           { editing, offline: !online(d) }))),
         outputs.length > 1 ? h("div", { class: "two" }, allOn, allOff) : null, sms));
       if (!online(d)) {
-        parts.push(h("a", { class: "card tight row link-card warn-card", href: `#/device/${id}/settings` },
+        control.push(h("a", { class: "card tight row link-card warn-card", href: `#/device/${id}/settings` },
           h("span", { class: "ico" }, icon("alert")), h("span", { class: "grow small" }, t("sms.offline_hint")),
           icon("next")));
       }
     }
     if (params.length) {
-      parts.push(h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("device.settings")),
+      control.push(h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("device.settings")),
         params.map((x) => paramRow(id, x, draw))));
     }
     const chartable = readings.filter((x) => x.ui?.chart !== false && typeof x.value === "number");
     chartTag = chartable.find((x) => x.key === chartTag?.key) || chartable.find((x) => /kW|W$/.test(x.unit || ""))
       || chartable[0] || null;
-    if (chartTag) parts.push(await chart(id, chartTag, chartable, (tag) => { chartTag = tag; draw(); }));
+    if (chartTag) data.push(await chart(id, chartTag, chartable, (tag) => { chartTag = tag; draw(); }));
     const rest = readings.filter((x) => x !== chartTag);
     if (rest.length) {
-      parts.push(h("section", { class: "stack" }, h("h2", { class: "h2" }, t("device.readings")),
+      data.push(h("div", { class: "stack" },
         rest.map((x) => x.data_type === "bool" ? sensorRow(id, x) : h("div", { class: "reading" },
           h("span", { class: "muted" }, name(x.display_name)),
           changed(h("b", {}, display(x), " ", h("span", { class: "small muted" }, x.unit || "")),
             `r:${id}:${x.key}`, x.value)))));
     }
-    parts.push(commandsSection(view, draw));
-    if (outputs.length && d.access !== "viewer") parts.push(timersSection(d, outputs, draw));
-    parts.push(await history(id, view.tags));
+    plan.push(commandsSection(view, draw));
+    if (outputs.length && d.access !== "viewer") plan.push(timersSection(d, outputs, draw));
+    log.push(await history(id, view.tags));
+    const sections = [
+      ["control", "power", t("sec.control"), t("sec.control_hint"), control],
+      ["data", "sensor", t("sec.data"), t("sec.data_hint"), data],
+      ["plan", "clock", t("sec.plan"), t("sec.plan_hint"), plan],
+      ["log", "repeat", t("sec.log"), t("sec.log_hint"), log],
+    ].filter((x) => x[4].some((el) => el && el.childNodes?.length !== 0));
+    const built = sections.map(([key, ic, title, hint, els]) => {
+      const el = section(ic, title, hint, ...els.filter(Boolean));
+      el.id = `sec-${key}`;
+      return el;
+    });
+    if (built.length > 1) parts.push(jumpBar(sections.map(([key, ic, title]) => [key, ic, title]), page));
+    parts.push(...built);
     page.replaceChildren(...parts);
   }
   draw();
@@ -492,6 +526,31 @@ export function device(state, id) {
   };
   state.timer = setInterval(() => { if (!document.hidden) draw(); }, 30000);
   return page;
+}
+
+/** A sticky row of the page's sections: a touch scrolls to one; the one on screen lights up. */
+function jumpBar(items, page) {
+  const buttons = items.map(([key, ic, title]) => h("button", { type: "button", class: "jump", "data-key": key,
+    onclick: () => page.querySelector(`#sec-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" }) },
+  icon(ic), h("span", {}, title)));
+  const bar = h("nav", { class: "jumpbar", "aria-label": t("sec.jump") }, buttons);
+  requestAnimationFrame(() => {
+    const light = (key) => {
+      for (const b of buttons) b.classList.toggle("on", b.dataset.key === key);
+      // on a narrow phone the lit item may sit past the edge of the bar: bring it in, bar only
+      const on = buttons.find((b) => b.dataset.key === key);
+      if (on && bar.scrollWidth > bar.clientWidth) {
+        bar.scrollTo({ left: on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2, behavior: "smooth" });
+      }
+    };
+    light(items[0][0]);
+    const seen = new IntersectionObserver((entries) => {
+      const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (top) light(top.target.id.slice(4));
+    }, { rootMargin: "-90px 0px -55% 0px" });
+    for (const [key] of items) { const el = page.querySelector(`#sec-${key}`); if (el) seen.observe(el); }
+  });
+  return bar;
 }
 
 async function chart(id, tag, choices, pick) {
@@ -916,16 +975,17 @@ export function me(state) {
       h("div", { class: "stack tight grow" }, h("h1", { class: "h2" }, state.me?.display_name || ""),
         h("span", { class: "small muted ltr" }, state.me?.email || state.me?.username || ""))),
     invites,
-    h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("me.homes")), orgs,
+    section("home", t("me.homes"), t("sec.homes_hint"), h("div", { class: "card stack" }, orgs,
       h("button", { class: "btn block", onclick: async () => {
         try { if (await newHome()) { toast(t("homes.created"), "ok"); go("#/home"); } }
         catch (err) { toast(errorText(err), "err"); }
-      } }, icon("plus"), t("homes.new"))),
-    h("a", { class: "card tight row link-card", href: "#/energy" },
-      h("span", { class: "ico" }, icon("bolt")), h("span", { class: "grow" }, t("energy.title")), icon("next")),
-    h("a", { class: "card tight row link-card", href: "#/notifications" },
-      h("span", { class: "ico" }, icon("bell")), h("span", { class: "grow" }, t("nav.notifications")), icon("next")),
-    h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("me.preferences")),
+      } }, icon("plus"), t("homes.new")))),
+    section("sliders", t("sec.tools"), t("sec.tools_hint"),
+      h("a", { class: "card tight row link-card", href: "#/energy" },
+        h("span", { class: "ico" }, icon("bolt")), h("span", { class: "grow" }, t("energy.title")), icon("next")),
+      h("a", { class: "card tight row link-card", href: "#/notifications" },
+        h("span", { class: "ico" }, icon("bell")), h("span", { class: "grow" }, t("nav.notifications")), icon("next"))),
+    section("gear", t("me.preferences"), t("sec.prefs_hint"), h("div", { class: "card stack" },
       h("div", { class: "row between" }, h("span", { class: "row" }, icon("globe"), t("me.language")),
         h("button", { class: "btn", onclick: async () => {
           await loadLanguage(lang === "fa" ? "en" : "fa");
@@ -945,22 +1005,24 @@ export function me(state) {
           saved.set("app.presence", off ? null : "off");
           ev.target.textContent = off ? t("me.on") : t("me.off");
         } }, saved.get("app.presence") === "off" ? t("me.off") : t("me.on"))),
-      h("p", { class: "tiny muted lh" }, t("me.presence_help"))),
-    h("button", { class: "btn danger block", onclick: async () => { await logout(); go("#/login"); } },
-      icon("out"), " ", t("me.sign_out")),
-    h("button", { class: "link danger-link", onclick: async () => {
-      try {
-        if (await deleteAccount()) { await logout(); toast(t("account.deleted"), "ok"); go("#/login"); }
-      } catch (err) { toast(errorText(err), "err"); }
-    } }, t("account.delete")));
+      h("p", { class: "tiny muted lh" }, t("me.presence_help")))),
+    section("user", t("sec.account"), null,
+      h("button", { class: "btn danger block", onclick: async () => { await logout(); go("#/login"); } },
+        icon("out"), " ", t("me.sign_out")),
+      h("button", { class: "link danger-link", onclick: async () => {
+        try {
+          if (await deleteAccount()) { await logout(); toast(t("account.deleted"), "ok"); go("#/login"); }
+        } catch (err) { toast(errorText(err), "err"); }
+      } }, t("account.delete"))));
   homes().then((rows) => {
     orgs.replaceChildren(...rows.map((m) => h("div", { class: "reading" },
       h("button", { class: "link", onclick: () => { home.set(m.org_id); go("#/home"); } },
         h("span", { class: "row" }, icon("home"), homeName(m))),
-      h("div", { class: "row" }, h("span", { class: "chip" }, t(`roles.${m.role_id}`)),
+      h("div", { class: "row" }, h("span", { class: "chip" },
+        m.role_id.startsWith("lvl_") ? t("levels.custom") : t(`roles.${m.role_id}`)),
         h("a", { class: "icon-btn", href: `#/home-settings/${m.org_id}`, "aria-label": t("homeset.title") },
           icon("gear")),
-        m.role_id === "customer_owner" ? h("a", { class: "icon-btn", href: `#/members/${m.org_id}`,
+        m.role_id === "customer_owner" || m.role_id.startsWith("lvl_") ? h("a", { class: "icon-btn", href: `#/members/${m.org_id}`,
           "aria-label": t("members.title") }, icon("people")) : null))));
   }).catch(() => {});
   api("GET", "/api/account/invitations").then((rows) => {
