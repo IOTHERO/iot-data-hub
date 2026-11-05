@@ -1,6 +1,8 @@
 // Core of the consumer app: DOM helper, icons, i18n, API client, session, toasts.
 // No framework, no build step; every text from the server goes in as a text node, never as HTML.
 
+import { hasBridge, offlineAnswer, remember } from "./local.js";
+
 // --- DOM ---------------------------------------------------------------------------------------
 
 export function h(tag, attrs = {}, ...children) {
@@ -261,32 +263,61 @@ export class ApiError extends Error {
 async function refresh() {
   const token = saved.get("app.refresh");
   if (!token) return false;
-  const r = await fetch("/api/auth/refresh", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: token }),
-  });
+  let r;
+  try {
+    r = await fetch("/api/auth/refresh", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: token }),
+    });
+  } catch {
+    // no internet: the session is kept (it is not expired, just unreachable)
+    throw new ApiError(0, { error: "network" });
+  }
   if (!r.ok) { session.clear(); return false; }
   session.store(await r.json());
   return true;
 }
 
 export async function api(method, path, body, { auth = true, retry = true } = {}) {
-  if (auth && !access && !(await refresh())) throw new ApiError(401, { error: "not_authenticated" });
-  const headers = { "Content-Type": "application/json" };
-  if (auth && access) headers.Authorization = `Bearer ${access}`;
   let r;
   try {
-    r = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-  } catch {
-    throw new ApiError(0, { error: "network" });
+    if (auth && !access && !(await refresh())) throw new ApiError(401, { error: "not_authenticated" });
+    const headers = { "Content-Type": "application/json" };
+    if (auth && access) headers.Authorization = `Bearer ${access}`;
+    try {
+      r = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    } catch {
+      throw new ApiError(0, { error: "network" });
+    }
+  } catch (err) {
+    if (err.status !== 0) throw err;
+    // the internet is down: the last data, and over the home Wi-Fi the devices themselves
+    const offline = await offlineAnswer(method, path, body);
+    if (offline === null) throw err;
+    localMode(true);
+    return offline;
   }
+  localMode(false);
   if (r.status === 401 && auth && retry && (await refresh())) {
     return api(method, path, body, { auth, retry: false });
   }
   if (r.status === 204) return null;
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new ApiError(r.status, data);
+  remember(method, path, data);
   return data;
+}
+
+/** The "local mode" strip while the app works without the internet. */
+function localMode(on) {
+  if (document.body.classList.contains("is-local") === on) return;
+  document.body.classList.toggle("is-local", on);
+  let strip = document.getElementById("local-strip");
+  if (on && !strip) {
+    strip = h("div", { id: "local-strip", class: "local-strip", role: "status" },
+      h("span", { class: "dot" }), t(hasBridge() ? "local.mode" : "local.readonly"));
+    document.body.append(strip);
+  } else if (!on && strip) strip.remove();
 }
 
 /** Live updates (server-sent events over fetch, so the bearer token goes in a header):

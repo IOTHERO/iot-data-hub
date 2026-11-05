@@ -1,0 +1,43 @@
+# Android app (android/): builds the debug APK on GitHub's servers, which reach Google's
+# Android repositories (they are not reachable from Iran). Download it from the run's
+# "Artifacts": titiswitch-android-debug. A tag v* also builds it for the release.
+name: android
+
+on:
+  push:
+    branches: [main, master, platform]
+    paths: ["android/**", ".github/workflows/android.yml"]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: "Hub address the app opens (empty: asked on first start)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+      - name: Build the debug APK
+        working-directory: android
+        env:
+          SERVER_URL: ${{ github.event.inputs.server_url }}
+        run: gradle --no-daemon assembleDebug -PserverUrl="${SERVER_URL}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: titiswitch-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

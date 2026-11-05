@@ -1,0 +1,19 @@
+// TiTiSwitch customer app for Android: the customer web app (app/) in a WebView, plus a small
+// native bridge for local control over the home Wi-Fi (app/js/local.js). Built by
+// .github/workflows/android.yml (Google's build servers are not reachable from Iran).
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "TiTiSwitch"
+include ":app"

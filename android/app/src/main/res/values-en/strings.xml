@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TiTiSwitch</string>
+    <string name="server_title">Server address</string>
+    <string name="server_hint">The smart-home server, e.g. https://example.com/app/</string>
+    <string name="server_bad">The address must start with https:// (or be a server on the local network).</string>
+    <string name="ok">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="offline_first">The first start needs the internet.</string>
+    <string name="change_server">Change server address</string>
+</resources>

@@ -1,0 +1,44 @@
+# Flutter customer app (mobile/): analyze, test, and build the Android APK on GitHub's servers
+# (Google's Android repositories are not reachable from every network). The APK is under the
+# run's "Artifacts": titiswitch-flutter-apk. The iOS build needs a Mac (Xcode): not built here.
+name: mobile
+
+on:
+  push:
+    branches: [main, master, platform]
+    paths: ["mobile/**", "app/i18n/**", ".github/workflows/mobile.yml"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+      - name: Translations are the web app's
+        run: cmp ../app/i18n/fa.json assets/i18n/fa.json && cmp ../app/i18n/en.json assets/i18n/en.json
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Build the APK
+        run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: titiswitch-flutter-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30

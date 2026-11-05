@@ -4,6 +4,7 @@ import { api, h, icon, live, loadLanguage, saved, session, t } from "./core.js";
 import { startPickers } from "./picker.js";
 import { startChecks } from "./checks.js";
 import { splash } from "./splash.js";
+import { refreshKeys } from "./local.js";
 import { automationsPage } from "./auto.js";
 import * as more from "./more.js";
 import * as v from "./views.js";
@@ -39,7 +40,13 @@ async function render() {
   if (!PUBLIC.has(page) && !session.signedIn) { location.hash = "#/login"; return; }
   if (!PUBLIC.has(page) && !state.me) {
     try { state.me = await api("GET", "/api/auth/me"); }
-    catch { session.clear(); location.hash = "#/login"; return; }
+    catch (err) {
+      // only a refused session signs out; no internet (and nothing kept yet) shows the start
+      if (err.status !== 0) session.clear();
+      location.hash = "#/login";
+      return;
+    }
+    refreshKeys(api);                      // the local keys, while the server is reachable
     if (!state.stopLive) {                 // one live connection while signed in
       state.stopLive = live((type, data) => { if (state.onLive) state.onLive(type, data); });
     }

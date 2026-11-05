@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TiTiSwitch mark (same geometry as app/js/logo.js), centred in the adaptive icon's safe zone -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:scaleX="0.05" android:scaleY="0.05"
+        android:translateX="6.55" android:translateY="15.35">
+        <path android:strokeColor="#00B4CD" android:strokeWidth="37" android:fillColor="#00000000"
+            android:pathData="M1199,327.5H499.5V554.5H726.5V1006H953.5V554.5H1180.5V1006H1444.5V1233H702" />
+        <path android:fillColor="#F58634" android:pathData="M783,585.0a56.0,56.0 0 0,1 112,0v167a56.0,56.0 0 0,1 -112,0z" />
+        <path android:fillColor="#F58634" android:pathData="M1011,795.0a56.0,56.0 0 0,1 112,0v167a56.0,56.0 0 0,1 -112,0z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M811,600a28,28 0 1,0 56,0a28,28 0 1,0 -56,0z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M1039,946a28,28 0 1,0 56,0a28,28 0 1,0 -56,0z" />
+        <path android:fillColor="#00B4CD" android:pathData="M1231,320a33,33 0 1,0 66,0a33,33 0 1,0 -66,0z" />
+        <path android:fillColor="#00B4CD" android:pathData="M615,1233a32,32 0 1,0 64,0a32,32 0 1,0 -64,0z" />
+        <path android:strokeColor="#00B4CD" android:strokeWidth="20" android:strokeLineCap="round"
+            android:fillColor="#00000000" android:pathData="M1192.8,268.3A88,88 0 0,1 1298.4,239.0 M1145.4,240.0A143,143 0 0,1 1324.4,190.4 M1331.8,372.9A86,86 0 0,1 1230.4,399.2 M1381.7,399.4A142,142 0 0,1 1201.8,447.6" />
+        <path android:strokeColor="#00B4CD" android:strokeWidth="32" android:strokeLineCap="round"
+            android:fillColor="#00000000" android:pathData="M590.4,1289.6A80,80 0 0,1 590.4,1176.4 M550.1,1329.9A137,137 0 0,1 550.1,1136.1 M509.1,1370.9A195,195 0 0,1 509.1,1095.1" />
+    </group>
+</vector>

@@ -272,6 +272,7 @@ async def test_yaml_sync_leaves_platform_alone(store: Any) -> None:
 
 async def test_rollback_refused_with_platform_data(store: Any, database_url: str) -> None:
     await _orgs(store)
+    rollback(database_url, "0020_local_control")
     rollback(database_url, "0019_claim_pairing")
     rollback(database_url, "0018_home_levels")
     rollback(database_url, "0017_switches_sms")

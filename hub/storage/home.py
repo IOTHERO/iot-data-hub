@@ -294,6 +294,38 @@ class HomeStore:
         async with self._conn() as conn:
             await conn.execute("DELETE FROM device_sms WHERE device_id=%s", (device_id,))
 
+    # --- local control (0020) -----------------------------------------------------------------
+
+    async def local_keys(self, device_ids: list[str]) -> dict[str, dict[str, Any]]:
+        async with self._conn() as conn:
+            rows = await (await conn.execute(
+                "SELECT device_id, key, version, local_addr, updated_at FROM device_local_keys "
+                "WHERE device_id = ANY(%s)", (device_ids,))).fetchall()
+        return {r["device_id"]: dict(r) for r in rows}
+
+    async def save_local_key(self, device_id: str, key: str) -> dict[str, Any]:
+        """A new key for the device (the first, or a rotation: version + 1)."""
+        async with self._conn() as conn:
+            row = await (await conn.execute(
+                "INSERT INTO device_local_keys (device_id, key) VALUES (%s,%s) "
+                "ON CONFLICT (device_id) DO UPDATE SET key=EXCLUDED.key, "
+                "version=device_local_keys.version + 1, updated_at=now() "
+                "RETURNING device_id, key, version, local_addr, updated_at",
+                (device_id, key))).fetchone()
+        return dict(row)
+
+    async def set_local_addr(self, device_id: str, addr: str) -> None:
+        async with self._conn() as conn:
+            await conn.execute("UPDATE device_local_keys SET local_addr=%s WHERE device_id=%s "
+                               "AND local_addr IS DISTINCT FROM %s", (addr, device_id, addr))
+
+    async def org_device_ids(self, org_id: str) -> list[str]:
+        async with self._conn() as conn:
+            rows = await (await conn.execute(
+                "SELECT device_id FROM device_access WHERE org_id=%s AND revoked_at IS NULL",
+                (org_id,))).fetchall()
+        return [r["device_id"] for r in rows]
+
     # --- tickets ------------------------------------------------------------------------------
 
     _TICKET_SELECT = (

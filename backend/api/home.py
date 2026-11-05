@@ -869,6 +869,8 @@ async def change_member_role(org_id: str, user_role_id: int, body: MemberRoleIn,
         raise Forbidden("only an owner changes an owner", code="escalation")
     await svc.store.home.set_member_role(org_id, user_role_id, body.role)
     svc.levels.forget()
+    if target.role_id != body.role:      # a phone keyed under the old role must ask again
+        await svc.local.rotate_org(org_id, "member_role_changed", p.username)
     await svc.store.add_auth_audit("member_role_changed", p.username, user_id=target.user_id,
                                    actor_id=p.user_id, client_addr=client_addr(request),
                                    detail={"org_id": org_id, "from": target.role_id,

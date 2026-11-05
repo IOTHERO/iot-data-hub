@@ -1,0 +1,33 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "ir.titiswitch.app"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "ir.titiswitch.app"
+        minSdk 26                       // Android 8+: adaptive icon, modern WebView
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+        // the hub the app opens (gradle -PserverUrl=https://.../app/); empty: asked on first start
+        buildConfigField "String", "SERVER_URL", "\"${project.findProperty('serverUrl') ?: ''}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

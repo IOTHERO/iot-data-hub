@@ -28,6 +28,7 @@ from backend.api import (
     data,
     home,
     ingest,
+    local,
     maker,
     metrics,
     model,
@@ -272,8 +273,8 @@ def create_app(services: Services) -> FastAPI:
                             status_code=500)
 
     for module in (auth, account, automations, users, data, control, config, model, calc,
-                   platform, home, maker, ingest, versions, dashboards, reports, schedules,
-                   system, metrics, ws):
+                   platform, home, local, maker, ingest, versions, dashboards, reports,
+                   schedules, system, metrics, ws):
         app.include_router(module.router)
     if services.settings.app_dir is not None and (services.settings.app_dir / "index.html"
                                                    ).is_file():

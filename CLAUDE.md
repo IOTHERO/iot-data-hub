@@ -84,6 +84,10 @@ scripts/           check.py (= CI locally), lock.py (requirements.lock)
 Dockerfile, docker-compose.yml  Linux deployment with PostgreSQL/TimescaleDB
 frontend/          Web dashboard served by hub-api at / (docs/frontend.md): plain ES modules,
                    no build step, no npm; js/views/ one file per page; i18n/fa.json + en.json
+android/           Customer app for Android: app/ in a WebView + LocalBridge (home Wi-Fi control);
+                   built by .github/workflows/android.yml (Google's servers are blocked in Iran)
+mobile/            Customer app in Flutter (Android + iOS; mobile/README.md); same API and
+                   translations as app/; .github/workflows/mobile.yml builds the APK
 tests/             unit, drivers (vs simulators), storage/db (real PostgreSQL via pgserver),
                    api, e2e (uvicorn + WebSocket + all three protocols), frontend (static rules)
 .claude/skills/    Project-specific Claude Code skills (add-device, ...)

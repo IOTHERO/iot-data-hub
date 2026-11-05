@@ -633,7 +633,9 @@
     "help": "These rules are stored on the device itself; it runs them on its own while cut off from the server.",
     "none": "No rule runs on the device yet.",
     "on_device": "on device",
-    "how": "Turn on “run on the device” in an automation"
+    "how": "Turn on “run on the device” in an automation",
+    "mode": "Local mode: no internet; devices are switched over the home Wi-Fi",
+    "readonly": "No internet; showing the last known state"
   },
   "out": {
     "rename": "Output name and icon",
@@ -822,5 +824,16 @@
     "site": "Website",
     "site_text": "TiTiSwitch.ir",
     "site_url": "https://titiswitch.ir"
+  },
+  "mobile": {
+    "server_title": "Server address",
+    "server_hint": "The smart-home server, e.g. https://example.com",
+    "server_bad": "The address must start with https:// (or be a server on the local network).",
+    "connect": "Connect",
+    "change_server": "Change server address",
+    "no_device": "No device",
+    "values": "Values",
+    "no_tickets": "You have no requests yet.",
+    "automations_web": "Creating and editing automations is in the web version for now."
   }
 }

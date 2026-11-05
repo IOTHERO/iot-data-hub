@@ -308,6 +308,33 @@ anyone on the broker could send it, and the claim code alone protects the device
 A command goes to the open TCP session, else the platform broker (if the device uses MQTT),
 else the HTTP queue.
 
+## Local control (home network, migration 0020)
+
+While the internet is down the Android app switches devices over the home Wi-Fi
+(`backend/local.py`, `hub/platform/local_sign.py`, `app/js/local.js`, `android/`).
+
+* **Keys.** `GET /api/platform/my/local-keys` gives the app, for every active native device the
+  caller holds at owner or operator level with `device.operate`, the device's local key (32 bytes,
+  base64url), its version and its home-network address. A member on an access level (rooms,
+  outputs, hours) gets none: those limits are enforced by the hub, which a phone talking to the
+  device directly does not pass. Fetching is audited (`local_keys_fetched`). The device gets the
+  same key as `{"type": "config", "local": {"enabled", "key", "version", "port"}}` and on
+  `GET /ingest/v1/devices/{id}/config` after it starts.
+* **Rotation** (`local_key_rotated`): a transfer claim, removing the device, removing a member of
+  its home or changing a member's role give a new key (version + 1), pushed to the device.
+* **On the Wi-Fi** the device serves `GET /local/v1/nonce`, `POST /local/v1/command`
+  `{nonce, tag, value_json, sig}` and `POST /local/v1/state {nonce, sig}`; `sig` is
+  base64url(HMAC-SHA256(key, lines of device_id, nonce, "command", tag, value_json)) (state: the
+  first two lines and "state"). A nonce works once for 30 s: no replay, and without the key
+  nothing works. The device announces `_titiswitch._tcp` (mDNS, TXT `id=<device_id>`) and reports
+  `local_addr` (a private address only) in its state message.
+* **Afterwards** it reports what it did, `{"type": "local_log", "entries": [...]}` over HTTP
+  (`/ingest/v1/devices/{id}/local_log`), MQTT (`d/<id>/local_log`) or TCP
+  (`local_commands_reported` in the audit log); the values follow as telemetry.
+* **The app** keeps the last answers of the server on the phone (devices, views, summary) and,
+  when a request fails for lack of network, answers from them; writes go to the device through
+  the native bridge. The web version (iPhone) shows the last state read-only.
+
 ## Who may command a platform device
 
 `device.operate` through an organization grant, in an organization that owns the device or

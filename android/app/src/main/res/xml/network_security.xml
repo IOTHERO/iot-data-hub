@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain HTTP is needed only for the devices inside the house (their local web server on the
+     home Wi-Fi). LocalBridge sends nothing but to private addresses and .local names, and the
+     WebView opens the hub over HTTPS (plain HTTP only for a hub on a private address, testing). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

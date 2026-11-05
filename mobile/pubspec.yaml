@@ -1,0 +1,45 @@
+# TiTiSwitch customer app in Flutter: one code base for Android and iOS. It talks to the hub's
+# REST API (/api/platform/my/...), like the web app (app/), and switches devices over the home
+# Wi-Fi when the internet is down (lib/core/local.dart, contract in docs/platform.md).
+name: titiswitch
+description: TiTiSwitch smart home (customer app)
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  http: ^1.2.0                     # REST API and the devices on the home network
+  shared_preferences: ^2.2.0       # last answers of the server (offline), settings
+  flutter_secure_storage: ^9.0.0   # the refresh token and the local keys (Keystore / Keychain)
+  crypto: ^3.0.3                   # HMAC-SHA256 for local commands
+  multicast_dns: ^0.3.2            # finding devices on the Wi-Fi (_titiswitch._tcp)
+  mobile_scanner: ^7.5.0           # scanning the QR label of a device
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/i18n/fa.json            # the same files as the web app (app/i18n), kept equal by
+    - assets/i18n/en.json            # tests/frontend/test_mobile.py
+  fonts:                             # Vazirmatn, SIL Open Font License (assets/fonts/OFL.txt)
+    - family: Vazirmatn
+      fonts:
+        - asset: assets/fonts/Vazirmatn-Regular.ttf
+        - asset: assets/fonts/Vazirmatn-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Vazirmatn-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Vazirmatn-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Vazirmatn-Black.ttf
+          weight: 900

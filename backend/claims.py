@@ -214,6 +214,8 @@ class ClaimService:
         if not await self.store.claims.complete_claim(target.device_id, org_id,
                                                       principal.user_id, now):
             raise Invalid(INVALID, code="invalid_claim")
+        if target.owner_org is not None:          # moved from another owner: their phones'
+            await self.svc.local.rotate([target.device_id], "transferred")   # copy stops
         if name:
             await self.store.platform.update_device(None, target.device_id, name=name)
         await self.store.add_auth_audit(
@@ -259,6 +261,7 @@ class ClaimService:
         target = await self._record(device_id)
         if target.parent_device_id is not None:
             raise Invalid("remove it through its edge hub", code="child_device")
+        await self.svc.local.rotate([device_id], "released")   # before it stops listening
         ids = await self.store.claims.release(device_id, "sold", self.clock())
         await self._stop(ids)
         code = new_code()

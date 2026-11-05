@@ -185,6 +185,8 @@ class Ingest:
             await driver.touch()
             return
         await driver.state(payload)
+        if isinstance(payload, dict) and payload.get("local_addr"):
+            await self.svc.local.report_addr(driver.device.device_id, payload["local_addr"])
         firmware = payload.get("firmware") if isinstance(payload, dict) else None
         if isinstance(firmware, str) and firmware.strip():
             await self.svc.store.versions.report_firmware(driver.device.device_id,

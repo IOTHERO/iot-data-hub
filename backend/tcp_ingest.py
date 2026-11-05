@@ -160,5 +160,7 @@ class TcpIngest:
             await self.ingest.state(driver, message)
         elif kind == "ota":
             await self.ingest.ota(driver, message)
+        elif kind == "local_log":
+            await self.ingest.svc.local.report_log(driver.device.device_id, message.get("entries"))
         else:
-            raise ValueError("type is telemetry, ack, state or ota")
+            raise ValueError("type is telemetry, ack, state, ota or local_log")

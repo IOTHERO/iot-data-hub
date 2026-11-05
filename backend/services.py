@@ -42,6 +42,7 @@ class Services:
     sms: Any = None             # backend.sms gateway (alerts by SMS / call, SMS commands)
     levels: Any = None          # backend.levels.LevelService (a home's access levels)
     claims: Any = None          # backend.claims.ClaimService (labels, claims, edge hubs)
+    local: Any = None           # backend.local.LocalControl (home-network keys, migration 0020)
     ingest: Any = None          # backend.ingest.Ingest (native devices: MQTT / HTTP / TCP)
     tcp_ingest: Any = None      # backend.tcp_ingest.TcpIngest (HUB_TCP_INGEST_PORT)
     automations: Any = None     # backend.automations.AutomationEngine (scenes, automations)
@@ -93,6 +94,10 @@ class Services:
         if self.claims is None:
             from backend.claims import ClaimService
             self.claims = ClaimService(self)
+        if self.local is None:
+            from backend.local import LocalControl
+            self.local = LocalControl(self)
+        self.accounts.local = self.local     # member removal rotates the home's local keys
         if self.ingest is None:
             from backend.ingest import Ingest
             self.ingest = Ingest(self)

@@ -8,6 +8,7 @@ One subscription for all devices (not a connection per device):
     <prefix>d/+/ota/status  device -> hub   {"job_id": ..., "status": ...}  (firmware)
     <prefix>d/+/pairing     device -> hub   {}  the owner holds the pairing button (also before
                                             the device is claimed)
+    <prefix>d/+/local_log   device -> hub   {"entries": [...]}  done over the home network
     <prefix>d/<id>/ota      hub -> device   a firmware offer
     <prefix>d/<id>/cmd      hub -> device   {"command_id": ..., "tag": ..., "value": ...}
 
@@ -76,7 +77,7 @@ class MqttIngest:
             try:
                 async with self._client() as client:
                     self.client = client
-                    for kind in ("telemetry", "state", "ack", "ota/status", "pairing"):
+                    for kind in ("telemetry", "state", "ack", "ota/status", "pairing", "local_log"):
                         await client.subscribe(f"{self.shared}{self.prefix}d/+/{kind}", qos=1)
                     self.connected = True
                     delay = 1.0
@@ -123,6 +124,8 @@ class MqttIngest:
                 await self.ingest.ack(driver, data, "mqtt")
             elif kind == "ota/status":               # a firmware job report
                 await self.ingest.ota(driver, data)
+            elif kind == "local_log":                # carried out while cut off
+                await self.ingest.svc.local.report_log(device_id, data.get("entries"))
         except (ValueError, TypeError) as exc:
             self.counters["dropped"] += 1
             log.info("platform MQTT: message from %s refused: %s", device_id, exc)
@@ -143,7 +146,7 @@ def acl_allows(device_id: str, topic: str, action: str, prefix: str = "") -> boo
     own = f"{prefix}d/{device_id}/"
     if action == "publish":
         return topic in (own + "telemetry", own + "state", own + "ack", own + "ota/status",
-                         own + "pairing")
+                         own + "pairing", own + "local_log")
     if action == "subscribe":
         return topic in (own + "cmd", own + "ota", own + "rules", own + "config")
     return False

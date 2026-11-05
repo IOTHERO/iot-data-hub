@@ -5,7 +5,9 @@ over HTTP, TCP or MQTT, signed in with its device credential.
 Faults for tests: ``refuse`` (ack failed), ``silent`` (no ack, no new value), ``ack_only``
 (acks done but never reports the value).
 
-Firmware rules it shows: pairing mode (``pair_http``; MQTT ``d/<id>/pairing``) and reconnecting
+Firmware rules it shows: local control over the home network (``serve_local``: nonce, signed
+commands and state, hub.platform.local_sign; the log of what it did goes to the hub afterwards),
+pairing mode (``pair_http``; MQTT ``d/<id>/pairing``) and reconnecting
 after a random delay (``reconnect_delay`` / ``run_forever``): a power cut must not bring
 thousands of devices back in the same second.
 
@@ -82,6 +84,9 @@ class NativeDeviceSim:
     sms_counter: int = 0                    # the last accepted message's counter (kept in flash)
     clock_offset_s: float = 0.0             # hub time - own time, from the rules' server_time
     local_log: list[dict[str, Any]] = field(default_factory=list)   # rules run while cut off
+    local_key: str | None = None            # from {"type": "config", "local": {...}}
+    local_done: list[dict[str, Any]] = field(default_factory=list)  # phone commands, to report
+    _nonces: dict[str, float] = field(default_factory=dict, repr=False)
     _outbox: asyncio.Queue[dict[str, Any]] | None = field(default=None, repr=False)
 
     @property
@@ -109,6 +114,12 @@ class NativeDeviceSim:
             if message.get("server_time"):
                 hub = datetime.fromisoformat(message["server_time"].replace("Z", "+00:00"))
                 self.clock_offset_s = (hub - datetime.now(UTC)).total_seconds()
+        elif message.get("type") == "config" and isinstance(message.get("local"), dict):
+            local = message["local"]
+            self.local_key = local.get("key") if local.get("enabled") else None
+            self._nonces.clear()                 # nonces of the old key end with it
+            if isinstance(message.get("sms"), dict):
+                self.receive({"type": "config", "sms": message["sms"]})
         elif message.get("type") == "config" and isinstance(message.get("sms"), dict):
             sms = message["sms"]
             new = sms.get("key") if sms.get("enabled") else None
@@ -200,6 +211,97 @@ class NativeDeviceSim:
         return out + [{"type": "ack", "command_id": cid, "status": "done",
                        "value": command["value"]},
                       {"type": "telemetry", **self.telemetry()}]
+
+    # --- local control (home network) ---------------------------------------------------------
+
+    def local_request(self, method: str, path: str, body: dict[str, Any] | None
+                      ) -> tuple[int, dict[str, Any]]:
+        """The device's own small web server on the home Wi-Fi (firmware contract)."""
+        from hub.platform.local_sign import NONCE_TTL_S, new_nonce, verify
+
+        now = time.monotonic()
+        self._nonces = {n: t for n, t in self._nonces.items() if now - t < NONCE_TTL_S}
+        if method == "GET" and path == "/local/v1/info":
+            return 200, {"device_id": self.device_id, "firmware": self.firmware,
+                         "local": self.local_key is not None}
+        if self.local_key is None:
+            return 403, {"ok": False, "error": "local control is not set up"}
+        if method == "GET" and path == "/local/v1/nonce":
+            if len(self._nonces) >= 16:
+                return 429, {"ok": False, "error": "too many open nonces"}
+            nonce = new_nonce()
+            self._nonces[nonce] = now
+            return 200, {"device_id": self.device_id, "nonce": nonce, "ttl_s": NONCE_TTL_S}
+        if method != "POST" or not isinstance(body, dict):
+            return 404, {"ok": False, "error": "not found"}
+        nonce = str(body.get("nonce", ""))
+        if self._nonces.pop(nonce, None) is None:          # used, expired or never issued
+            return 401, {"ok": False, "error": "nonce"}
+        if path == "/local/v1/state":
+            if not verify(self.local_key, body.get("sig", ""), self.device_id, nonce, "state"):
+                return 401, {"ok": False, "error": "signature"}
+            return 200, {"ok": True, "values": dict(self.values)}
+        if path == "/local/v1/command":
+            tag, value_json = str(body.get("tag", "")), str(body.get("value_json", ""))
+            if not verify(self.local_key, body.get("sig", ""), self.device_id, nonce,
+                          "command", tag, value_json):
+                return 401, {"ok": False, "error": "signature"}
+            if self.refuse:
+                return 200, {"ok": False, "error": "refused by the device"}
+            value = json.loads(value_json)
+            self.values[tag] = value
+            self.local_done.append({"at": datetime.now(UTC).isoformat(), "tag": tag,
+                                    "value": value, "by": "local"})
+            return 200, {"ok": True, "tag": tag, "value": value}
+        return 404, {"ok": False, "error": "not found"}
+
+    async def serve_local(self, host: str = "127.0.0.1", port: int = 0,
+                        ready: asyncio.Event | None = None) -> None:
+        """Serve local_request over plain HTTP/1.1 (one request per connection), as a
+        microcontroller would; ``self.local_port`` is the bound port."""
+        crlf = "\r\n"
+
+        async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            try:
+                head = await asyncio.wait_for(reader.readuntil((crlf * 2).encode()), 5)
+                lines = head.decode("latin-1").split(crlf)
+                method, path, _ = lines[0].split(" ", 2)
+                length = next((int(h.split(":", 1)[1]) for h in lines[1:]
+                               if h.lower().startswith("content-length:")), 0)
+                raw = await reader.readexactly(min(length, 4096)) if length else b""
+                body = json.loads(raw) if raw else None
+                status, answer = self.local_request(method, path.split("?")[0], body)
+            except (ValueError, asyncio.IncompleteReadError, TimeoutError):
+                status, answer = 400, {"ok": False, "error": "bad request"}
+            data = json.dumps(answer).encode()
+            head_out = crlf.join([f"HTTP/1.1 {status} X", "Content-Type: application/json",
+                                  f"Content-Length: {len(data)}", "Connection: close", "", ""])
+            writer.write(head_out.encode() + data)
+            with contextlib.suppress(Exception):
+                await writer.drain()
+                writer.close()
+
+        server = await asyncio.start_server(handle, host, port)
+        self.local_port = server.sockets[0].getsockname()[1]
+        if ready is not None:
+            ready.set()
+        async with server:
+            await server.serve_forever()
+
+    async def report_local_http(self, client: httpx.AsyncClient) -> int:
+        """Back online: tell the hub what the phone switched over the home network."""
+        if not self.local_done:
+            return 0
+        r = await client.post(f"/ingest/v1/devices/{self.device_id}/local_log",
+                              headers={"Authorization": f"Bearer {self.secret}"},
+                              json={"entries": self.local_done})
+        if r.status_code == 200:
+            sent, self.local_done = len(self.local_done), []
+            await client.post(f"/ingest/v1/devices/{self.device_id}/telemetry",
+                              headers={"Authorization": f"Bearer {self.secret}"},
+                              json=self.telemetry())
+            return sent
+        return 0
 
     # --- HTTP ---------------------------------------------------------------------------------
 

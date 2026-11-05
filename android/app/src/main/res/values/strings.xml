@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">تی‌تی‌سویچ</string>
+    <string name="server_title">نشانی سرور</string>
+    <string name="server_hint">نشانی سامانهٔ خانهٔ هوشمند، مثلاً https://example.ir/app/</string>
+    <string name="server_bad">نشانی باید با https:// شروع شود (یا نشانی یک سرور داخل شبکه باشد).</string>
+    <string name="ok">ذخیره</string>
+    <string name="cancel">انصراف</string>
+    <string name="offline_first">برای اولین باز شدن، اینترنت لازم است.</string>
+    <string name="change_server">تغییر نشانی سرور</string>
+</resources>
