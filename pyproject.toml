@@ -42,6 +42,7 @@ dev = [
 [project.scripts]
 hub = "hub.main:main"
 hub-commission = "hub.commission:main"
+hub-provision = "hub.provision:main"
 hub-api = "backend.server:main"
 hub-sim = "simulators.run:main"
 hub-admin = "backend.admin:main"

@@ -55,6 +55,8 @@ hub/
   main.py          `hub`: collector-only console (commissioning)
   commission.py    `hub-commission`: read-only field tools (read report, Modbus probe/scan, OPC UA
                    browse, MQTT listen, SNMP walk, S7 dump, HTTP get) with tag suggestions
+  provision.py     `hub-provision`: production line - writes device_id/secret from the maker
+                   panel's CSV into each board over USB serial (simulators/factory_board.py)
 backend/
   app.py, api/     FastAPI routes (REST + /api/ws); errors are {"error": code, "message"}
   auth.py          Login, lockout, rotating refresh tokens; security.py (argon2, JWT)
