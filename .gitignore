@@ -61,6 +61,7 @@ desktop.ini
 .dev/
 .preview/
 .preview*/
+.loadtest/
 .load/
 
 # Release bundles (scripts/windows/build-bundle.ps1)

@@ -5,10 +5,13 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
+import '../core/notify.dart';
 import '../ui/kit.dart';
 import 'add_device.dart';
+import 'alerts.dart';
 import 'automations.dart';
 import 'home.dart';
 import 'me.dart';
@@ -27,23 +30,81 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   int tab = 0;                      // 0 home, 1 scenes, 2 automations, 3 me
   int _homeKey = 0;
+  final List<int> _visited = [0];   // the tabs in the order seen: back returns to the one before
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.alerts.tripped.addListener(_tripped);
+  }
+
+  @override
+  void dispose() {
+    widget.state.alerts.tripped.removeListener(_tripped);
+    super.dispose();
+  }
+
+  void _open(int i) {
+    if (i == tab) return;
+    _visited.remove(i);
+    _visited.add(i);
+    setState(() => tab = i);
+  }
+
+  /// A sensor just tripped: tell the person wherever they are, with a way to the alarm list.
+  void _tripped() {
+    final s = widget.state;
+    final a = s.alerts.tripped.value;
+    if (a == null || !mounted) return;
+    s.alerts.tripped.value = null;
+    HapticFeedback.heavyImpact();
+    Notify.alarm((a['alert_id'] as num).toInt(), alarmLabel(s, a), '${a['device_name'] ?? ''}',
+        channel: s.t('alarm.notify_channel'), channelHelp: s.t('alarm.notify_channel_help'));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        backgroundColor: alarmRed,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8),
+        content: Row(children: [
+          Icon(alarmIcon(a['kind'] as String?), color: Colors.white),
+          const SizedBox(width: 10),
+          Expanded(child: Text('${alarmLabel(s, a)} · ${a['device_name']}',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+        ]),
+        action: SnackBarAction(label: s.t('alarm.title'), textColor: Colors.white,
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlertsScreen(state: s)))),
+      ));
+  }
 
   Future<void> _add() async {
     final added = await Navigator.push<bool>(context,
         MaterialPageRoute(builder: (_) => AddDeviceScreen(state: widget.state)));
-    if (added == true) setState(() { tab = 0; _homeKey++; });
+    if (added == true) {
+      setState(() => _homeKey++);
+      _open(0);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final s = widget.state;
     final pages = [
-      HomeScreen(key: ValueKey(_homeKey), state: s, openMe: () => setState(() => tab = 3)),
-      ScenesScreen(state: s),
-      AutomationsPage(state: s),
+      HomeScreen(key: ValueKey(_homeKey), state: s, openMe: () => _open(3)),
+      ScenesScreen(state: s, onSeg: (scenes) => _open(scenes ? 1 : 2)),
+      AutomationsPage(state: s, onSeg: (scenes) => _open(scenes ? 1 : 2)),
       MeScreen(state: s, signedOut: widget.signedOut),
     ];
-    return Scaffold(
+    return PopScope(
+      canPop: _visited.length <= 1,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _visited.length <= 1) return;
+        setState(() {
+          _visited.removeLast();
+          tab = _visited.last;
+        });
+      },
+      child: Scaffold(
       extendBody: true,
       backgroundColor: Tk.of(context).bg,
       body: GlowPage(
@@ -66,10 +127,11 @@ class _ShellState extends State<Shell> {
             (Icons.person_outline_rounded, s.t('nav.me')),
           ],
           addLabel: s.t('nav.add'),
-          onTap: (i) => setState(() => tab = i),
+          onTap: _open,
           onAdd: _add,
         ),
       ),
+    ),
     );
   }
 }

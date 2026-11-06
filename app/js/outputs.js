@@ -2,7 +2,7 @@
 // favourites on the home screen, named parts inside a group (sub-groups), and the quick SMS
 // sheet for when the internet is down.
 
-import { api, changed, dialog, errorText, h, icon, name, t, toast } from "./core.js";
+import { api, changed, dialog, errorText, h, icon, name, scroller, t, toast } from "./core.js";
 import { command, composer, connection, homeOrg, smsSettings } from "./more.js";
 import { climateSheet } from "./climate.js";
 
@@ -13,19 +13,70 @@ export const OUTPUT_ICONS = ["power", "bulb", "chandelier", "lamp", "fan", "snow
 export const SENSOR_ICONS = ["motion", "magnet", "smoke", "remote", "ir", "call", "siren", "door", "water",
   "thermo", "sensor", "bolt"];
 const ALERTING = new Set(["motion", "magnet", "smoke", "siren", "water"]);
+// the inputs the hub treats as a burglar / fire alarm (backend/home_alerts.py KINDS)
+export const ALARMS = new Set(["motion", "magnet", "smoke"]);
 
-/** An on/off input as a live state: its icon, its state in words, glowing while active. */
-export function sensorRow(deviceId, x) {
+/** An on/off input as a live state: its icon, its state in words, glowing while active; red
+ * and pulsing while its security alert is open (``alarm``). While ``editing``, a touch opens
+ * the sheet that names it and says what it is (a magnet or a smoke detector is an alarm). */
+export function sensorRow(deviceId, x, { editing = false, alarm = null, redraw = null } = {}) {
   const ic = x.icon || x.ui?.icon || "sensor";
   const active = x.value === true;
   const words = x.states ? x.states[active ? 1 : 0] : null;
   const key = `sensor.${ic}_${active ? "on" : "off"}`;
   const named = t(key) !== key ? t(key) : t(active ? "sensor.active" : "sensor.idle");
   const state = x.value === null || x.value === undefined ? "—" : words || named;
-  const row = h("div", { class: `reading sensor ${active ? "active" : ""} ${active && ALERTING.has(ic) ? "alert" : ""}` },
-    h("span", { class: "row" }, h("span", { class: "sensor-ico" }, icon(ic)), h("span", {}, name(x.display_name))),
-    h("span", { class: "sensor-state" }, state));
-  return changed(row, `sensor:${deviceId}:${x.key}`, x.value);
+  const cls = `reading sensor ${active ? "active" : ""} ${active && ALERTING.has(ic) ? "alert" : ""}
+    ${alarm ? `alarmed ${alarm.seen_at ? "" : "live"}` : ""} ${editing ? "editing" : ""}`.replace(/\s+/g, " ");
+  const kids = [h("span", { class: "row" }, h("span", { class: "sensor-ico" }, icon(ic)), h("span", {}, name(x.display_name)),
+    editing ? icon("edit") : null),
+  h("span", { class: "sensor-state" }, alarm && !alarm.seen_at ? t("alarm.badge") : state)];
+  const row = editing
+    ? h("button", { type: "button", class: cls, "data-key": x.key, "aria-label": `${t("out.rename")}: ${name(x.display_name)}`,
+      onclick: async () => { if (await sensorDialog(deviceId, x) && redraw) redraw(); } }, ...kids)
+    : h("div", { class: cls, "data-key": x.key }, ...kids);
+  return changed(row, `sensor:${deviceId}:${x.key}`, `${x.value}|${alarm?.alert_id}|${alarm?.seen_at}`);
+}
+
+/** Name an input and say what it is: a PIR, a door / window magnet or a smoke detector is a
+ * burglar / fire alarm (the hub opens an alert when it trips). */
+export async function sensorDialog(deviceId, x) {
+  const maker = name(x.default_name || x.display_name);
+  const nameIn = h("input", { class: "input", value: x.default_name ? name(x.display_name) : "",
+    placeholder: t("out.name_hint"), maxlength: 40, "aria-label": t("out.name") });
+  let chosen = x.icon || x.ui?.icon || "sensor";
+  const note = h("p", { class: "tiny lh" });
+  const tell = () => {
+    note.className = `tiny lh ${ALARMS.has(chosen) ? "alarm-note" : "muted"}`;
+    note.textContent = ALARMS.has(chosen) ? t("alarm.is_alarm") : t("alarm.not_alarm");
+  };
+  const picks = SENSOR_ICONS.map((ic) => {
+    const b = h("button", { type: "button", class: `icon-pick ${chosen === ic ? "on" : ""} ${ALARMS.has(ic) ? "alarm-pick" : ""}`,
+      "aria-label": t(`sensor.kind_${ic}`) !== `sensor.kind_${ic}` ? t(`sensor.kind_${ic}`) : ic, "aria-pressed": chosen === ic,
+      onclick: () => {
+        chosen = ic;
+        for (const o of picks) { o.classList.toggle("on", o === b); o.setAttribute("aria-pressed", String(o === b)); }
+        tell();
+        buzz();
+      } }, icon(ic));
+    return b;
+  });
+  tell();
+  const buttons = [["cancel", t("common.cancel")], ["save", t("common.save"), "primary"]];
+  if (x.default_name || x.icon) buttons.unshift(["reset", t("out.reset")]);
+  const answer = await dialog(t("alarm.sensor_title"), h("div", { class: "stack" },
+    h("div", { class: "field" }, h("span", { class: "label" }, t("out.name")), nameIn,
+      h("span", { class: "tiny muted" }, t("out.default", { name: maker }))),
+    h("span", { class: "label" }, t("alarm.sensor_kind")), h("div", { class: "icon-grid" }, picks), note), buttons);
+  if (answer !== "save" && answer !== "reset") return false;
+  const template = x.ui?.icon || null;
+  const payload = answer === "reset" ? {} : { name: nameIn.value.trim() || null,
+    icon: chosen === template || chosen === "sensor" ? null : chosen, favorite: false, mode: "toggle" };
+  try {
+    await api("PUT", `/api/platform/my/devices/${deviceId}/labels/${x.key}`, payload);
+    toast(t("out.saved"), "ok");
+    return true;
+  } catch (err) { toast(errorText(err), "err"); return false; }
 }
 
 /** A short tick under the finger where the phone can (Android); silently nothing elsewhere. */
@@ -174,13 +225,20 @@ export function favoritesRow(views, redraw) {
     .map((x) => ({ v, x })));
   if (!favs.length) return null;
   return h("section", { class: "stack tight" }, h("span", { class: "label" }, t("home.favorites")),
-    h("div", { class: "fav-row" }, favs.map(({ v, x }) => {
+    scroller(h("div", { class: "fav-row" }, favs.map(({ v, x }) => {
       const on = x.value === true;
       const offline = v.device.state !== "online";
       const b = h("button", { class: `fav ${on ? "on" : ""}`, disabled: offline, "aria-pressed": on,
         "aria-label": `${name(x.display_name)} · ${v.device.name}`, onclick: async () => {
           if (x.ui?.role === "climate_power" && await climateSheet(v.device.device_id, x.key)) { redraw(); return; }
           buzz();
+          if (x.mode === "momentary") {              // a push: the hub releases it
+            b.classList.add("on", "busy");
+            await api("POST", `/api/platform/my/devices/${v.device.device_id}/pulse`,
+              { tag: x.key, seconds: x.pulse_s || 1 }).catch((err) => toast(errorText(err), "err"));
+            setTimeout(redraw, (x.pulse_s || 1) * 1000 + 400);
+            return;
+          }
           b.classList.toggle("on", !on);
           b.classList.add("busy");
           await command(v.device.device_id, x.key, !on, true);
@@ -190,7 +248,7 @@ export function favoritesRow(views, redraw) {
       h("span", { class: "stack tight" }, h("span", { class: "name" }, name(x.display_name)),
         h("span", { class: "tiny muted" }, offline ? t("device.offline") : on ? t("device.on") : t("device.off"))));
       return changed(b, `fav:${v.device.device_id}:${x.key}`, on);
-    })));
+    }))));
 }
 
 // --- named parts inside a group ------------------------------------------------------------------

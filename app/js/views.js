@@ -3,10 +3,13 @@
 import { commandsSection, deleteAccount, groupsRow, newHome, sharesList, smsSection, ticketsSection,
   timersSection } from "./more.js";
 import { favoritesRow, outButton, sensorRow, smsSheet } from "./outputs.js";
+import { alarmBar, onAlerts, openAlerts, unseen } from "./alerts.js";
+import { remotesBox } from "./remotes.js";
+import { customBody, customEditor, customTitle } from "./custom.js";
 import { climateCard, climateKeys, climateSets } from "./climate.js";
 import { logo as brandLogo } from "./logo.js";
 import { api, changed, loading, section, viewsOf, dialog, errorText, h, home, icon, imageUrl, lang, loadLanguage, logout, name, num,
-  saved, SCENE_TONE, session, setAccent, t, toast, when } from "./core.js";
+  saved, SCENE_TONE, scroller, session, setAccent, t, toast, when, homeLayout, setHomeLayout } from "./core.js";
 
 export const go = (route) => { location.hash = route; };
 
@@ -132,7 +135,13 @@ export function login(brand = null) {
   code.el.classList.add("hidden");
   let mfaToken = null;
   const submit = h("button", { class: "btn primary block", type: "submit" }, t("auth.sign_in"));
-  const form = h("form", { class: "stack" }, email.el, password.el, code.el, submit);
+  // remember me: the e-mail stays on this phone (the browser's own manager may keep the password)
+  const kept = saved.get("app.remember");
+  if (kept) email.input.value = kept;
+  const remember = h("input", { type: "checkbox", checked: kept !== null || saved.get("app.remember_off") === null });
+  const rememberRow = h("label", { class: "check-row" }, remember, h("span", { class: "small" }, t("auth.remember")));
+  const form = h("form", { class: "stack" }, email.el, password.el, code.el, rememberRow, submit);
+  if (kept) requestAnimationFrame(() => password.input.focus());
   form.addEventListener("submit", busy(submit, async () => {
     let tokens;
     if (mfaToken) {
@@ -149,6 +158,8 @@ export function login(brand = null) {
       }
     }
     session.store(tokens);
+    saved.set("app.remember", remember.checked ? email.input.value.trim() || kept : null);
+    saved.set("app.remember_off", remember.checked ? null : "1");
     go(saved.get("app.after") || "#/home");
     saved.set("app.after", null);
   }));
@@ -249,7 +260,14 @@ export function home_(state) {
   const grid = h("div", { class: "grid" });
   const stats = h("div", { class: "stats" });
   const scenes = h("div", { class: "scene-row" });
+  const scenesBox = scroller(scenes);
+  const alarm = alarmBar();             // a pulsing red bar while a PIR / magnet / smoke alert is open
+  const offAlerts = onAlerts(() => state.later(draw));
+  state.cleanup = () => { alarm.cleanup(); offAlerts(); };
   const groupsBox = h("div");
+  const customBox = h("div");            // the person's own section (custom.js)
+  const rerender = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
+  let latest = { views: [], scenes: [] };
   const favsBox = h("div");
   const rooms = h("div", { class: "tabs", role: "tablist", "aria-label": t("home.rooms") });
   const homeBtn = h("button", { class: "home-pick", "aria-label": t("home.pick") });
@@ -257,15 +275,26 @@ export function home_(state) {
     icon("bell"));
   const avatar = h("a", { class: "avatar", href: "#/me", "aria-label": t("nav.me") },
     (state.me?.display_name || "?").trim().charAt(0));
-  // the order a person thinks in: how is the home, do something now, my groups, every device
+  // the order a person thinks in: how is the home, do something now, my groups, every device;
+  // each person may reorder or hide them (Me > home layout)
+  const blocks = {
+    today: () => section("bolt", t("sec.today"), t("sec.today_hint"), stats),
+    custom: () => {
+      const sec = section("sliders", customTitle(), t("custom.hint"), customBox);
+      sec.querySelector(".sec-head").append(h("button", { class: "icon-btn", "aria-label": t("custom.edit"),
+        onclick: () => customEditor(latest.views, latest.scenes, rerender) }, icon("edit")));
+      return sec;
+    },
+    quick: () => section("star", t("sec.quick"), t("sec.quick_hint"), scenesBox, favsBox),
+    groups: () => section("relay", t("sec.groups"), t("sec.groups_hint"), groupsBox),
+    devices: () => section("home", t("sec.devices"), t("sec.devices_hint"), rooms, grid),
+  };
   const page = h("div", { class: "page" },
     h("div", { class: "row between" },
       h("div", { class: "stack tight" }, h("span", { class: "greet" }, t(greeting())), homeBtn),
       h("div", { class: "row" }, bell, avatar)),
-    section("bolt", t("sec.today"), t("sec.today_hint"), stats),
-    section("star", t("sec.quick"), t("sec.quick_hint"), scenes, favsBox),
-    section("relay", t("sec.groups"), t("sec.groups_hint"), groupsBox),
-    section("home", t("sec.devices"), t("sec.devices_hint"), rooms, grid));
+    alarm,
+    ...homeLayout().filter((r) => r.on).map((r) => blocks[r.key]()));
   let room = saved.get("app.room") || "all";
   let groupsKey = "";
   let homeList = [];
@@ -287,7 +316,7 @@ export function home_(state) {
       api("GET", `/api/platform/my/notifications${q}`).catch(() => []),
       sceneOrg(homeList).then((org) => (org ? api("GET", `/api/platform/organizations/${org}/scenes`)
         .then((rows) => rows.map((s) => ({ ...s, org }))) : [])).catch(() => [])]);
-    bell.classList.toggle("dot-on", notes.length > 0);
+    bell.classList.toggle("dot-on", notes.length > 0 || unseen().length > 0);
     const key = `${home.id}|${devices.map((d) => `${d.device_id}:${d.state}`).join(",")}`;
     if (key !== groupsKey && devices.length) {      // the groups row only when devices change
       groupsKey = key;
@@ -301,11 +330,14 @@ export function home_(state) {
           ? stat(t("home.energy_today"), num(summary.energy_kwh), "", "kWh")
           : stat(t("home.power_now"), summary?.power_kw !== null && summary?.power_kw !== undefined
             ? num(summary.power_kw) : "—", "", "kW")),
-      stat(t("home.alerts"), num(summary?.alerts || 0), summary?.alerts ? "warn" : "",
-        t("home.active_alerts")));
-    scenes.replaceChildren(...sceneRows.slice(0, 3).map((s) => sceneButton(s)));
+      h("a", { class: "plain-link", href: "#/alerts", "aria-label": t("alarm.title") },
+        stat(t("home.alerts"), num((summary?.alerts || 0) + openAlerts().length),
+          openAlerts().length ? "alarm" : summary?.alerts ? "warn" : "", t("home.active_alerts"))));
+    scenes.replaceChildren(...sceneRows.map((s) => sceneButton(s)));
+    latest = { views, scenes: sceneRows };
+    customBox.replaceChildren(customBody(views, sceneRows, draw, rerender));
     favsBox.replaceChildren(...[favoritesRow(views, draw)].filter(Boolean));
-    scenes.classList.toggle("hidden", !sceneRows.length);
+    scenesBox.classList.toggle("hidden", !sceneRows.length);
     const names = [...new Set(devices.map((d) => d.room).filter(Boolean))].sort();
     const groups = [["all", t("home.all")], ...names.map((r) => [`room:${r}`, r])];
     if (devices.some((d) => d.access !== "owner")) groups.push(["shared", t("home.shared")]);
@@ -416,10 +448,11 @@ export async function command(deviceId, key, value, quiet = false) {
 
 // --- device --------------------------------------------------------------------------------------
 
-export function device(state, id) {
+export function device(state, id, focus = null) {
   const page = h("div", { class: "page" }, loading());
   let chartTag = null;
   let editing = false;
+  let rf = null;                         // the remotes card keeps itself across redraws
   async function draw() {
     let view;
     try { view = await api("GET", `/api/platform/my/devices/${id}/view`); }
@@ -430,7 +463,9 @@ export function device(state, id) {
     const rest0 = view.tags.filter((x) => !inClimate.has(x.key));
     const outputs = rest0.filter((x) => x.writable && x.data_type === "bool");
     const params = rest0.filter((x) => x.writable && x.data_type !== "bool");
-    const readings = rest0.filter((x) => !x.writable);
+    const readings = rest0.filter((x) => !x.writable && !x.ui?.role?.startsWith("rf_"));
+    const operate = d.access !== "viewer";
+    const alarms = new Map(openAlerts().filter((a) => a.device_id === id).map((a) => [a.tag_key, a]));
     const sub = [d.room, view.product].filter(Boolean).join(" · ");
     const gear = h("a", { class: "icon-btn", href: `#/device/${id}/settings`, "aria-label": t("device.settings_page") },
       icon("gear"));
@@ -443,7 +478,11 @@ export function device(state, id) {
           .filter(Boolean).join(" · ")),
         d.warranty_until ? h("span", { class: "chip" }, t("device.warranty_until", { date: jalali(d.warranty_until) }))
           : null,
-        d.access !== "owner" ? h("span", { class: "chip accent" }, t(`access.${d.access}`)) : null)];
+        d.access !== "owner" ? h("span", { class: "chip accent" }, t(`access.${d.access}`)) : null,
+        operate ? h("button", { class: `chip ${editing ? "accent" : ""}`, "aria-pressed": editing,
+          onclick: () => { editing = !editing; draw(); } }, icon(editing ? "check" : "edit"),
+        editing ? t("out.edit_done") : t("out.edit_all")) : null),
+      editing ? h("p", { class: "tiny muted lh" }, t("out.edit_all_hint")) : null];
     const control = [];                  // the page in the order of use: control, values,
     const data = [];                     // plans, what happened
     const plan = [];
@@ -465,7 +504,6 @@ export function device(state, id) {
         toast(t("device.done"), "ok");
         draw();
       }));
-      const operate = d.access !== "viewer";
       const naming = operate ? h("button", { class: `chip ${editing ? "accent" : ""}`, "aria-pressed": editing,
         onclick: () => { editing = !editing; draw(); } }, icon(editing ? "check" : "edit"),
       editing ? t("out.edit_done") : t("out.edit_mode")) : null;
@@ -485,9 +523,12 @@ export function device(state, id) {
           icon("next")));
       }
     }
-    if (params.length) {
+    if (!rf) rf = remotesBox(id, operate);
+    control.push(rf);
+    const settable = params.filter((x) => !x.ui?.role?.startsWith("rf_"));
+    if (settable.length) {
       control.push(h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("device.settings")),
-        params.map((x) => paramRow(id, x, draw))));
+        settable.map((x) => paramRow(id, x, draw))));
     }
     const chartable = readings.filter((x) => x.ui?.chart !== false && typeof x.value === "number");
     chartTag = chartable.find((x) => x.key === chartTag?.key) || chartable.find((x) => /kW|W$/.test(x.unit || ""))
@@ -496,7 +537,8 @@ export function device(state, id) {
     const rest = readings.filter((x) => x !== chartTag);
     if (rest.length) {
       data.push(h("div", { class: "stack" },
-        rest.map((x) => x.data_type === "bool" ? sensorRow(id, x) : h("div", { class: "reading" },
+        rest.map((x) => x.data_type === "bool" ? sensorRow(id, x, { editing: editing && operate,
+          alarm: alarms.get(x.key), redraw: draw }) : h("div", { class: "reading" },
           h("span", { class: "muted" }, name(x.display_name)),
           changed(h("b", {}, display(x), " ", h("span", { class: "small muted" }, x.unit || "")),
             `r:${id}:${x.key}`, x.value)))));
@@ -518,8 +560,18 @@ export function device(state, id) {
     if (built.length > 1) parts.push(jumpBar(sections.map(([key, ic, title]) => [key, ic, title]), page));
     parts.push(...built);
     page.replaceChildren(...parts);
+    if (focus) {                         // from an alarm: the sensor it came from, lit up once
+      const el = page.querySelector(`[data-key="${CSS.escape(focus)}"]`);
+      focus = null;
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("focus-flash");
+        setTimeout(() => el.classList.remove("focus-flash"), 2600);
+      }
+    }
   }
   draw();
+  state.cleanup = onAlerts(() => state.later(draw));
   state.onLive = (type, data) => {                // only this device's values and state
     const mine = type === "status" ? data.device_id === id
       : data.some((x) => x.tag.split(".")[2] === id);
@@ -951,7 +1003,7 @@ export function addEdge(state, hubId = null) {
 const NOTE = { offline: ["warn", "alert"], command_failed: ["warn", "x"], command_expired: ["warn", "clock"],
   automation_failed: ["warn", "sliders"], automation_partial: ["wait", "sliders"] };
 
-export function notifications() {
+export function notifications(state) {
   const list = h("div", { class: "stack" }, loading());
   api("GET", `/api/platform/my/notifications${home.query()}`).then((rows) => {
     list.replaceChildren(...(rows.length ? rows.map((n) => {
@@ -963,7 +1015,9 @@ export function notifications() {
       return n.device_id ? h("a", { class: "plain-link", href: `#/device/${n.device_id}` }, body) : body;
     }) : [h("div", { class: "card empty" }, icon("bell", "i lg"), h("p", {}, t("note.none")))]));
   }).catch((err) => list.replaceChildren(h("p", {}, errorText(err))));
-  return h("div", { class: "page" }, header(t("nav.notifications")), list);
+  const alarm = alarmBar();              // open alarms first, they need a person
+  state.cleanup = alarm.cleanup;
+  return h("div", { class: "page" }, header(t("nav.notifications")), alarm, list);
 }
 
 // --- me, organizations, members ------------------------------------------------------------------
@@ -979,6 +1033,73 @@ function company() {
     row("globe", t("company.site"), h("a", { class: "link ltr", href: t("company.site_url"),
       target: "_blank", rel: "noopener" }, t("company.site_text"))));
 }
+
+/** Me > home layout: the home screen's sections in the person's order, each shown or hidden.
+ * Hold a row by its handle and drag it up or down; it is saved where it is let go. */
+function layoutEditor() {
+  const ICONS = { today: "bolt", custom: "sliders", quick: "star", groups: "relay", devices: "home" };
+  const list = h("div", { class: "stack tight layout-list" });
+  const box = h("div", { class: "stack layout-edit" },
+    h("span", { class: "row" }, icon("sliders"), t("layout.title")),
+    h("p", { class: "tiny muted lh" }, t("layout.help")), list,
+    h("button", { type: "button", class: "link small", onclick: () => { setHomeLayout(null); draw(); } },
+      t("layout.reset")));
+  const save = () => setHomeLayout([...list.children].map((el) => ({ key: el.dataset.key, on: el.dataset.on === "1" })));
+
+  function row(r) {
+    const handle = h("span", { class: "layout-handle", role: "button", tabindex: 0,
+      "aria-label": `${t("layout.drag")}: ${t(`layout.${r.key}`)}` }, icon("grip"));
+    const el = h("div", { class: `layout-row ${r.on ? "" : "off"}`, "data-key": r.key, "data-on": r.on ? "1" : "0" },
+      handle, h("span", { class: "row grow" }, icon(ICONS[r.key]), t(`layout.${r.key}`)),
+      h("button", { type: "button", class: `switch ${r.on ? "on" : ""}`, "aria-pressed": r.on,
+        "aria-label": `${t(`layout.${r.key}`)}: ${r.on ? t("me.on") : t("me.off")}`,
+        onclick: () => { el.dataset.on = r.on ? "0" : "1"; save(); draw(); } },
+      h("span", { class: "track" }, h("span", { class: "knob" }))));
+    // drag: the row follows the finger by taking the place of the row it passes over
+    handle.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      el.classList.add("dragging");
+      buzzLight();
+      const move = (e) => {
+        const over = [...list.children].find((o) => o !== el &&
+          e.clientY > o.getBoundingClientRect().top && e.clientY < o.getBoundingClientRect().bottom);
+        if (!over) return;
+        const below = e.clientY > over.getBoundingClientRect().top + over.offsetHeight / 2;
+        const before = below ? over.nextSibling : over;
+        if (before === el || before === el.nextSibling) return;
+        list.insertBefore(el, before);
+        save();                                  // kept at once, wherever the finger stops
+      };
+      const up = () => {
+        el.classList.remove("dragging");
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+        save();
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    });
+    // the keyboard: arrow up / down move the row
+    handle.addEventListener("keydown", (ev) => {
+      if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
+      ev.preventDefault();
+      const other = ev.key === "ArrowUp" ? el.previousSibling : el.nextSibling?.nextSibling;
+      if (ev.key === "ArrowUp" && !other) return;
+      list.insertBefore(el, other || null);
+      save();
+      handle.focus();
+    });
+    return el;
+  }
+
+  function draw() { list.replaceChildren(...homeLayout().map(row)); }
+  draw();
+  return box;
+}
+
+function buzzLight() { try { navigator.vibrate?.(10); } catch { /* not supported */ } }
 
 const ACCENTS = [["", "#19B8D0"], ["gold", "#E8B86A"], ["teal", "#7FD1C7"], ["violet", "#A99BFF"], ["coral", "#FF9F7A"]];
 
@@ -1025,6 +1146,7 @@ export function me(state) {
           ev.target.textContent = off ? t("me.on") : t("me.off");
         } }, saved.get("app.presence") === "off" ? t("me.off") : t("me.on"))),
       h("p", { class: "tiny muted lh" }, t("me.presence_help")),
+      layoutEditor(),
       h("div", { class: "row between" }, h("span", { class: "row" }, icon("bell"), t("me.sound")),
         h("button", { class: "btn", onclick: (ev) => {
           const off = saved.get("app.sound") === "off";

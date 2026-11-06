@@ -13,11 +13,28 @@ class Brand {
   static const bg2 = Color(0xFF0E1117);
 }
 
-ThemeData buildTheme(Brightness brightness) {
+/// The accent colours of Me (views.js ACCENTS, app.css [data-accent]); '' = TiTiSwitch cyan.
+const accents = {'': Brand.cyan, 'gold': Color(0xFFE8B86A), 'teal': Color(0xFF7FD1C7),
+    'violet': Color(0xFFA99BFF), 'coral': Color(0xFFFF9F7A)};
+
+/// The accent nearest to a maker's colour ("#RRGGBB"): the app keeps to its own five.
+String nearestAccent(String? hex) {
+  if (hex == null || !RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(hex)) return '';
+  final v = int.parse(hex.substring(1), radix: 16);
+  final rgb = [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  int distance(Color c) {
+    final o = [(c.r * 255).round(), (c.g * 255).round(), (c.b * 255).round()];
+    return [for (var i = 0; i < 3; i++) (o[i] - rgb[i]) * (o[i] - rgb[i])].reduce((a, b) => a + b);
+  }
+  return (accents.entries.toList()..sort((a, b) => distance(a.value).compareTo(distance(b.value)))).first.key;
+}
+
+ThemeData buildTheme(Brightness brightness, [String accentKey = '']) {
   final dark = brightness == Brightness.dark;
   final text = dark ? const Color(0xFFF2F2F4) : const Color(0xFF15171C);
   final muted = dark ? const Color(0xFFA3A8B5) : const Color(0xFF5B606C);
-  final accent = dark ? Brand.cyan : Brand.cyanLight;
+  final accent = accentKey.isEmpty || !accents.containsKey(accentKey)
+      ? (dark ? Brand.cyan : Brand.cyanLight) : accents[accentKey]!;
   final surface = dark ? const Color(0x0DFFFFFF) : const Color(0x0A14161B);
   final line = dark ? const Color(0x14FFFFFF) : const Color(0x1414161B);
   final line2 = dark ? const Color(0x24FFFFFF) : const Color(0x2914161B);
@@ -38,6 +55,14 @@ ThemeData buildTheme(Brightness brightness) {
     scaffoldBackgroundColor: dark ? Brand.bg : const Color(0xFFF6F4EF),
     canvasColor: dark ? Brand.bg2 : Colors.white,
     hintColor: muted,
+    // scroll bars: thin and calm, the accent while dragged (as the web app's)
+    scrollbarTheme: ScrollbarThemeData(
+      thickness: const WidgetStatePropertyAll(4),
+      radius: const Radius.circular(4),
+      crossAxisMargin: 2,
+      thumbColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.dragged) ? accent : line2),
+    ),
     dividerColor: line,
     fontFamily: 'Vazirmatn',
     fontFamilyFallback: const ['Tahoma', 'Roboto'],

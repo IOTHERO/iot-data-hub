@@ -7,6 +7,13 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>To run your "arriving home" and "leaving" automations while the app is open.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>sms</string>
+		<string>tel</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>To scan the QR label of a TiTiSwitch device.</string>
 	<key>NSLocalNetworkUsageDescription</key>

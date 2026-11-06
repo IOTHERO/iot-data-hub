@@ -328,13 +328,15 @@ export function homeSettings(state, orgId) {
         h("div", { class: "two" }, labelled(t("homeset.peak_from"), peakFrom), labelled(t("homeset.peak_to"), peakTo)),
         h("div", { class: "two" }, labelled(t("homeset.factor"), factor), labelled(t("homeset.tax"), tax)),
         labelled(t("homeset.fixed"), fixed)),
-      save, contactsSection(orgId, owner), connectionSection(orgId));
+      save, connectionSection(orgId));
   })();
   return page;
 }
 
-/** The people the home alerts by SMS or a call, who may run scenes by SMS, and the PIN. */
-function contactsSection(orgId, owner) {
+/** People without an account whom the home alerts by SMS or a call (a neighbour), who may run
+ * scenes by SMS, and the PIN. On the home's access page: members' own numbers are set with the
+ * member there (levels.js), so this lists only the others. */
+export function contactsSection(orgId, owner) {
   const box = h("section", { class: "card stack" }, h("div", { class: "row between" },
     h("h2", { class: "h2" }, t("contacts.title")), h("span", { class: "row tiny muted" }, icon("call"))),
   h("p", { class: "small muted lh" }, t("contacts.help")));
@@ -343,7 +345,8 @@ function contactsSection(orgId, owner) {
     let data;
     try { data = await api("GET", `/api/platform/organizations/${orgId}/contacts`); }
     catch { box.remove(); return; }
-    const rows = data.contacts.map((c) => h("button", { class: "reading pick", disabled: !owner,
+    const rows = data.contacts.filter((c) => c.member_id === null || c.member_id === undefined)
+      .map((c) => h("button", { class: "reading pick", disabled: !owner,
       onclick: async () => { if (await contactDialog(orgId, c)) draw(); } },
     h("span", { class: "stack tight" }, h("span", {}, c.name), h("span", { class: "tiny muted ltr" }, c.phone)),
     h("span", { class: "row" }, c.sms ? h("span", { class: "chip ok" }, icon("chat"), t("contacts.sms")) : null,

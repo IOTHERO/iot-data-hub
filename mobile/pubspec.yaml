@@ -20,6 +20,9 @@ dependencies:
   crypto: ^3.0.3                   # HMAC-SHA256 for local commands
   multicast_dns: ^0.3.2            # finding devices on the Wi-Fi (_titiswitch._tcp)
   mobile_scanner: ^7.5.0           # scanning the QR label of a device
+  url_launcher: ^6.3.3             # the phone's SMS, call and browser (signed SMS, company card)
+  geolocator: ^14.0.2              # arriving home / leaving (presence automations)
+  flutter_local_notifications: ^22.3.3
 
 dev_dependencies:
   flutter_test:

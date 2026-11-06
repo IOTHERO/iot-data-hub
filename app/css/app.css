@@ -779,3 +779,134 @@ label:has(.ck-input:not(:checked)) .tiny.muted { opacity: .7; }
 .local-strip .dot { width: 8px; height: 8px; border-radius: 4px; background: var(--brand-orange, #F58634);
   box-shadow: 0 0 0 4px rgba(245,134,52,0.18); flex: none; }
 .hero-logo .tt-logo .lg-latin, .company .tt-logo .lg-latin { letter-spacing: 22px; }
+
+/* --- security alarms (alerts.js): a live red bar on the home screen, the alarm list ------------ */
+:root { --alarm: #FF4D5E; --alarm-soft: rgba(255,77,94,0.14); --alarm-glow: rgba(255,77,94,0.45); }
+:root[data-theme="light"] { --alarm: #D7263D; --alarm-soft: rgba(215,38,61,0.10); --alarm-glow: rgba(215,38,61,0.35); }
+.alarm-bar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 20px;
+  color: #fff; text-decoration: none; background: linear-gradient(135deg, var(--alarm), #B5172B);
+  box-shadow: 0 10px 30px var(--alarm-glow); animation: alarm-breathe 1.6s var(--ease) infinite; }
+.alarm-bar b { font-size: 15px; }
+.alarm-bar .tiny { opacity: .9; }
+.alarm-bar.calm { animation: none; background: var(--alarm-soft); color: var(--alarm);
+  box-shadow: inset 0 0 0 1px var(--alarm-glow); }
+.alarm-dot { position: relative; width: 38px; height: 38px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.18); }
+.alarm-bar.calm .alarm-dot { background: var(--alarm-soft); }
+.alarm-dot > span { position: absolute; inset: 0; border-radius: 50%; border: 2px solid currentColor;
+  animation: alarm-ring 1.6s var(--ease) infinite; }
+.alarm-bar.calm .alarm-dot > span { animation: none; opacity: 0; }
+@keyframes alarm-breathe { 0%, 100% { filter: brightness(1); transform: scale(1); }
+  50% { filter: brightness(1.25); transform: scale(1.012); } }
+@keyframes alarm-ring { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); } }
+.alarm-page { padding-bottom: 150px; }
+.alarm-list { gap: 10px; }
+.alarm-item { display: flex; align-items: center; gap: 12px; cursor: pointer; touch-action: pan-y;
+  transition: transform .25s var(--ease), opacity .25s var(--ease), border-color .3s; user-select: none; }
+.alarm-item.dragging { transition: none; }
+.alarm-item.live { border-color: var(--alarm-glow); background: var(--alarm-soft); }
+.alarm-ico { width: 42px; height: 42px; border-radius: 14px; flex: none; display: flex; align-items: center;
+  justify-content: center; background: var(--surface-2); color: var(--muted); }
+.alarm-item.live .alarm-ico { background: var(--alarm); color: #fff; animation: alarm-pulse 1.4s var(--ease) infinite; }
+@keyframes alarm-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--alarm-glow); } 50% { box-shadow: 0 0 0 9px transparent; } }
+.chip.danger { background: var(--alarm); color: #fff; border-color: transparent; cursor: pointer; }
+.chip.ok { cursor: default; }
+.alarm-foot { position: fixed; inset-inline: 0; bottom: calc(92px + env(safe-area-inset-bottom)); margin: 0 auto;
+  max-width: 520px; padding: 0 20px; z-index: 5; }
+.alarm-foot .btn { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); background: var(--bg-2); }
+.alarm-clear { color: var(--alarm); border-color: var(--alarm-glow); }
+.alarm-foot .btn, .alarm-item .seen-btn { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.reading.sensor.alarmed { background: var(--alarm-soft); box-shadow: inset 0 0 0 1px var(--alarm-glow); }
+.reading.sensor.alarmed.live .sensor-ico { background: var(--alarm); color: #fff; animation: alarm-pulse 1.4s var(--ease) infinite; }
+.reading.sensor.alarmed.live .sensor-state { background: var(--alarm); color: #fff; font-weight: 700; }
+.reading.sensor.editing { width: 100%; cursor: pointer; border: 1px dashed var(--accent-line); text-align: start; }
+.focus-flash { animation: focus-flash 2.4s var(--ease); }
+@keyframes focus-flash { 0%, 60% { box-shadow: 0 0 0 3px var(--accent), 0 0 28px var(--accent-glow); } 100% { box-shadow: none; } }
+.icon-pick.alarm-pick { box-shadow: inset 0 0 0 1px var(--alarm-glow); }
+.alarm-note { color: var(--alarm); }
+.stat.alarm { background: var(--alarm-soft); border-color: var(--alarm-glow); color: var(--alarm); }
+
+/* --- RF remotes (remotes.js) ----------------------------------------------------------------- */
+.rf-remote { padding-top: 6px; border-top: 1px solid var(--line); }
+.rf-remote:first-of-type { border-top: 0; }
+.out.rf-key { overflow: hidden; }
+.out.rf-key .push-ring { position: absolute; inset: 50% auto auto 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px;
+  border-radius: 50%; background: var(--accent-glow); opacity: 0; pointer-events: none; }
+.out.rf-key.pushing .push-ring { animation: push-ring .9s var(--ease); }
+.out.rf-key.unlearnt { border-style: dashed; color: var(--muted); }
+.out.rf-key.add { border-style: dashed; color: var(--accent); background: transparent; }
+.rf-listen { position: relative; width: 120px; height: 120px; margin: 8px auto; display: flex;
+  align-items: center; justify-content: center; color: var(--accent); }
+.rf-listen > span { position: absolute; inset: 30px; border-radius: 50%; border: 2px solid var(--accent-line);
+  animation: rf-wave 1.8s var(--ease) infinite; }
+.rf-listen > span:nth-child(2) { animation-delay: .6s; }
+.rf-listen > span:nth-child(3) { animation-delay: 1.2s; }
+@keyframes rf-wave { 0% { opacity: 1; transform: scale(.6); } 100% { opacity: 0; transform: scale(1.8); } }
+
+/* --- rows that scroll sideways: glass arrows at the edges while more waits past them ----------- */
+.hs { position: relative; }
+.hs-row { overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch; }
+.hs-row::-webkit-scrollbar { display: none; }
+.hs-row > * { scroll-snap-align: start; flex: none; }
+.scene-row.hs-row { padding: 2px 0 6px; }
+.hs-arrow { position: absolute; top: 50%; width: 34px; height: 34px; margin-top: -19px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2; padding: 0;
+  color: var(--text); border: 1px solid var(--line-2); background: rgba(14,17,23,0.55);
+  backdrop-filter: blur(12px) saturate(1.4); -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: var(--shadow); animation: hs-nudge 1.8s var(--ease) infinite; }
+:root[data-theme="light"] .hs-arrow { background: rgba(255,255,255,0.7); }
+.hs-arrow.start { inset-inline-start: -6px; animation-name: hs-nudge-back; }
+.hs-arrow.end { inset-inline-end: -6px; }
+[dir="rtl"] .hs-arrow.end { animation-name: hs-nudge-back; }
+[dir="rtl"] .hs-arrow.start { animation-name: hs-nudge; }
+@keyframes hs-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+@keyframes hs-nudge-back { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-3px); } }
+.hs::before, .hs::after { content: ""; position: absolute; top: 0; bottom: 6px; width: 28px; pointer-events: none;
+  z-index: 1; opacity: 0; transition: opacity .3s var(--ease); }
+.hs::before { inset-inline-start: 0; background: linear-gradient(to left, transparent, var(--bg)); }
+.hs::after { inset-inline-end: 0; background: linear-gradient(to right, transparent, var(--bg)); }
+[dir="rtl"] .hs::before { background: linear-gradient(to right, transparent, var(--bg)); }
+[dir="rtl"] .hs::after { background: linear-gradient(to left, transparent, var(--bg)); }
+.hs:has(.hs-arrow.start:not(.hidden))::before, .hs:has(.hs-arrow.end:not(.hidden))::after { opacity: 1; }
+
+/* --- scroll bars: thin and calm, in the theme's colours ------------------------------------- */
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 8px; border: 2px solid transparent;
+  background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-line); background-clip: padding-box; }
+
+/* --- Me: home layout ------------------------------------------------------------------------ */
+.layout-edit { padding-top: 10px; border-top: 1px solid var(--line); }
+.layout-row { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 14px;
+  background: var(--surface); }
+.layout-row.off { opacity: .55; }
+.layout-row { transition: box-shadow .2s var(--ease), transform .2s var(--ease); }
+.layout-row.dragging { transform: scale(1.03); box-shadow: var(--shadow), 0 0 0 1px var(--accent-line); background: var(--surface-2); z-index: 2; position: relative; }
+.layout-handle { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; cursor: grab; touch-action: none; color: var(--muted); }
+.layout-row.dragging .layout-handle { cursor: grabbing; color: var(--accent); }
+svg.i.up { transform: rotate(180deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .alarm-bar, .alarm-dot > span, .alarm-item.live .alarm-ico, .hs-arrow, .rf-listen > span,
+  .reading.sensor.alarmed.live .sensor-ico { animation: none !important; }
+}
+
+/* --- security scenarios (security.js) ------------------------------------------------------- */
+.security-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.security-card { display: flex; flex-direction: column; gap: 6px; padding: 14px; transition: border-color .3s, background-color .3s, box-shadow .3s; }
+.security-ico { width: 38px; height: 38px; border-radius: 13px; display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--muted); transition: background-color .3s, color .3s; }
+.security-card.on { border-color: var(--accent-line); background: var(--accent-soft); }
+.security-card.on .security-ico { background: var(--accent); color: var(--accent-ink); }
+.security-card.sec-burglar.on, .security-card.sec-night.on { border-color: var(--alarm-glow); background: var(--alarm-soft); }
+.security-card.sec-burglar.on .security-ico, .security-card.sec-night.on .security-ico { background: var(--alarm); color: #fff; }
+
+/* --- the person's own section (custom.js) ---------------------------------------------------- */
+.custom-empty { width: 100%; cursor: pointer; border-style: dashed; color: var(--muted); }
+.custom-empty svg.i { color: var(--accent); }
+.out.custom-scene { color: var(--accent); }
+.out.custom-scene.busy { animation: halo 1.4s var(--ease) infinite; }
+.sec-head .icon-btn { margin-inline-start: auto; }

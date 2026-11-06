@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/api.dart';
 import '../core/app_state.dart';
 import 'scan.dart';
+import 'edge_add.dart';
 
 class AddDeviceScreen extends StatefulWidget {
   const AddDeviceScreen({super.key, required this.state});
@@ -86,6 +87,12 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
               child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         const SizedBox(height: 20),
         FilledButton(onPressed: _busy ? null : _submit, child: Text(s.t('add.submit'))),
+        const SizedBox(height: 26),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EdgeAddScreen(state: s))),
+          icon: const Icon(Icons.hub_rounded),
+          label: Text(s.t('edge.link')),
+        ),
       ]),
     );
   }

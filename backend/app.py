@@ -19,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.api import (
     account,
+    alerts,
     auth,
     automations,
     calc,
@@ -272,7 +273,7 @@ def create_app(services: Services) -> FastAPI:
         return JSONResponse({"error": "internal", "message": "internal server error"},
                             status_code=500)
 
-    for module in (auth, account, automations, users, data, control, config, model, calc,
+    for module in (auth, account, alerts, automations, users, data, control, config, model, calc,
                    platform, home, local, maker, ingest, versions, dashboards, reports,
                    schedules, system, metrics, ws):
         app.include_router(module.router)

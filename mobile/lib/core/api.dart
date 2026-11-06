@@ -32,11 +32,14 @@ class Api {
 
   static const _cached = ['/api/auth/me', '/api/account/organizations', '/api/platform/my/'];
 
-  /// The hub address the user entered ("https://hub.example/app/" or the bare host).
+  /// The hub address the user entered ("https://hub.example/app/" or the bare host); a maker's
+  /// link may carry ?brand=<maker org> (the start page shows that maker, as the web app).
   String get server => store.get('server') ?? '';
 
   Future<void> setServer(String url) async {
-    var u = url.trim();
+    final brand = Uri.tryParse(url.trim())?.queryParameters['brand'];
+    if (brand != null && RegExp(r'^[A-Za-z0-9_-]{1,64}$').hasMatch(brand)) await store.set('brand', brand);
+    var u = url.trim().split('#').first.split('?').first;
     if (u.endsWith('/app/') || u.endsWith('/app')) u = u.substring(0, u.lastIndexOf('/app'));
     if (u.endsWith('/')) u = u.substring(0, u.length - 1);
     await store.set('server', u);
@@ -52,11 +55,47 @@ class Api {
 
   Future<bool> get signedIn async => _access != null || await store.secret('refresh') != null;
 
-  Future<void> login(String user, String password) async {
+  /// A valid access token for the live stream (refreshed when needed); null when signed out.
+  Future<String?> accessToken({bool renew = false}) async {
+    if (renew || _access == null) {
+      try {
+        if (!await _refresh()) return null;
+      } on ApiError {
+        return null;
+      }
+    }
+    return _access;
+  }
+
+  /// Sign in; returns an MFA token when the account asks for a second step (then [verifyMfa]).
+  Future<String?> login(String user, String password) async {
     final r = await _send('POST', '/api/auth/login', {'username': user, 'password': password}, auth: false)
         as Map<String, dynamic>;
-    if (r['mfa_required'] == true) throw ApiError(400, 'mfa_required', 'two-step sign-in');
+    if (r['mfa_required'] == true) return r['mfa_token'] as String;
     await _keep(r);
+    return null;
+  }
+
+  /// The second step: the 6-digit code of the authenticator app (or a recovery code).
+  Future<void> verifyMfa(String mfaToken, String code) async {
+    await _keep(await _send('POST', '/api/auth/mfa/verify', {'mfa_token': mfaToken, 'code': code}, auth: false)
+        as Map<String, dynamic>);
+  }
+
+  /// Account requests that need no sign-in (sign-up, forgotten password, e-mail links).
+  Future<dynamic> public(String method, String path, Object? body) => _send(method, path, body, auth: false);
+
+  /// A picture (a product's image, a maker's logo); null when there is none or no network.
+  Future<Uint8List?> bytes(String path, {bool auth = true}) async {
+    if (server.isEmpty) return null;
+    try {
+      if (auth && _access == null && !await _refresh()) return null;
+      final r = await http.get(Uri.parse('$server$path'),
+          headers: {if (auth && _access != null) 'Authorization': 'Bearer $_access'}).timeout(const Duration(seconds: 12));
+      return r.statusCode == 200 ? r.bodyBytes : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> logout() async {

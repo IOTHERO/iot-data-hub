@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/app_state.dart';
+import 'core/notify.dart';
 import 'screens/login.dart';
 import 'screens/server.dart';
 import 'screens/shell.dart';
@@ -14,6 +15,7 @@ import 'ui/theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final state = await AppState.open();
+  await Notify.init();                       // alarms as phone notifications (core/notify.dart)
   runApp(TiTiSwitchApp(state: state));
 }
 
@@ -28,8 +30,8 @@ class TiTiSwitchApp extends StatelessWidget {
         builder: (context, _) => MaterialApp(
           title: 'TiTiSwitch',
           debugShowCheckedModeBanner: false,
-          theme: buildTheme(Brightness.light),
-          darkTheme: buildTheme(Brightness.dark),
+          theme: buildTheme(Brightness.light, state.themeAccent),
+          darkTheme: buildTheme(Brightness.dark, state.themeAccent),
           themeMode: state.themeMode,
           locale: Locale(state.i18n.lang),
           supportedLocales: const [Locale('fa'), Locale('en')],
@@ -57,6 +59,7 @@ class _StartState extends State<Start> {
   Future<void> _afterSplash() async {
     final s = widget.state;
     if (s.api.server.isEmpty) return setState(() => stage = _Stage.server);
+    s.loadBrand();
     final ok = await s.api.signedIn && await s.load();
     if (mounted) setState(() => stage = ok ? _Stage.app : _Stage.login);
   }
@@ -68,7 +71,10 @@ class _StartState extends State<Start> {
       case _Stage.splash:
         return Splash(next: () { if (stage == _Stage.splash) _afterSplash(); });
       case _Stage.server:
-        return ServerScreen(state: s, done: () => setState(() => stage = _Stage.login));
+        return ServerScreen(state: s, done: () {
+          s.loadBrand();
+          setState(() => stage = _Stage.login);
+        });
       case _Stage.login:
         return LoginScreen(
           state: s,

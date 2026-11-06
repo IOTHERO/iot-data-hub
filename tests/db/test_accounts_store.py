@@ -19,6 +19,8 @@ SOON = datetime.now(UTC) + timedelta(days=1)
 
 
 def test_up_down_up(database_url: str) -> None:
+    rollback(database_url, "0022_security_modes")
+    rollback(database_url, "0021_alerts_remotes")
     rollback(database_url, "0020_local_control")
     rollback(database_url, "0019_claim_pairing")
     rollback(database_url, "0018_home_levels")
@@ -45,12 +47,16 @@ def test_up_down_up(database_url: str) -> None:
                                      "0017_switches_sms",
                                      "0018_home_levels",
                                      "0019_claim_pairing",
-                                     "0020_local_control"]
+                                     "0020_local_control",
+                                     "0021_alerts_remotes",
+                                     "0022_security_modes"]
 
 
 async def test_rollback_refused_with_accounts(store: Any, database_url: str) -> None:
     await store.accounts.create_user(username="user_x", display_name="X", password_hash="h",
                                      email="x@example.com", language="fa", verified_at=None)
+    rollback(database_url, "0022_security_modes")
+    rollback(database_url, "0021_alerts_remotes")
     rollback(database_url, "0020_local_control")
     rollback(database_url, "0019_claim_pairing")
     rollback(database_url, "0018_home_levels")

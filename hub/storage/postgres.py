@@ -175,6 +175,9 @@ class PostgresStore:
         from hub.storage.home import HomeStore
 
         self.home = HomeStore(self)              # groups, tickets, branding, plans (0016)
+        from hub.storage.alerts import AlertStore
+
+        self.alerts = AlertStore(self)           # security alerts, RF remotes (0021)
 
     async def open(self) -> None:
         await self._pool.open(wait=True, timeout=30)

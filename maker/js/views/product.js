@@ -299,7 +299,8 @@ export default async function productPage(args) {
       const chart = checkbox(t("io.chart"), tag.ui.chart !== false);
       const scenario = checkbox(t("io.scenario"), tag.ui.scenario !== false);
       const description = input({ value: tag.description || "", disabled: !manage });
-      const ROLES = ["", "climate_power", "climate_mode", "climate_setpoint", "climate_fan", "climate_temp"];
+      const ROLES = ["", "climate_power", "climate_mode", "climate_setpoint", "climate_fan", "climate_temp",
+        "rf_band", "rf_learn", "rf_learnt", "rf_send"];
       const role = select(ROLES.map((r) => [r, t(`io.role_${r || "none"}`)]), { value: tag.ui.role || "", disabled: !manage });
       const uiGroup = input({ value: tag.ui.group || "", maxlength: 40, disabled: !manage, placeholder: t("io.group_hint") });
       // the icon the buyer's app shows: outputs (lamp, fan, ...) and inputs a module carries

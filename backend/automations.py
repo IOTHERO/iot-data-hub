@@ -367,7 +367,7 @@ class AutomationEngine:
             try:
                 record = await self.store.automation(None, run["automation_id"])
                 spec = AutomationIn.from_record(record)
-            except Exception:  # noqa: BLE001 - deleted meanwhile, or an old definition
+            except Exception:  # noqa: BLE001  # nosec B112 - deleted meanwhile, or an old definition
                 continue
             cycles = [a for a in spec.actions if isinstance(a, CycleAction)]
             if not cycles or not record.enabled:

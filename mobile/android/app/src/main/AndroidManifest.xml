@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- arriving home / leaving: compared with the home's place while the app is open -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- cleartext only for the devices in the house: lib/core/local.dart sends plain HTTP
          to private addresses alone; the hub itself is HTTPS -->
     <application

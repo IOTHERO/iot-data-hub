@@ -163,6 +163,11 @@ class Hub:
         self.history = HistoryFilter()
         # async callbacks receiving alarm events (notifications); errors are logged, not raised
         self.alarm_listeners: list[Callable[[dict[str, Any]], Any]] = []
+        # called with every batch of samples (synchronously: a dictionary lookup per sample,
+        # anything slower in a task of its own); backend.home_alerts watches sensors with it
+        self.sample_hooks: list[Callable[[list[Sample]], None]] = []
+        # called with every device status report (synchronously, cheap; the same rule)
+        self.status_hooks: list[Callable[[DeviceStatus], None]] = []
         self._buffer: deque[Sample] = deque()
         self._status_dirty: dict[str, DeviceStatus] = {}
         # (ts, device_id, state, message) waiting for the store (collection_errors)
@@ -500,6 +505,11 @@ class Hub:
             self.calc.feed(samples)
         if self.platform_calc is not None:
             self.platform_calc.feed(samples)
+        for hook in self.sample_hooks:
+            try:
+                hook(samples)
+            except Exception:  # noqa: BLE001 - a hook must never break data collection
+                log.exception("sample hook failed")
 
     async def _on_status(self, status: DeviceStatus) -> None:
         old = self.statuses.get(status.device_id)
@@ -517,6 +527,11 @@ class Hub:
             await self.alarms.on_status(status, self.clock())
         except Exception:  # noqa: BLE001
             log.exception("offline alarm evaluation failed")
+        for hook in self.status_hooks:
+            try:
+                hook(status)
+            except Exception:  # noqa: BLE001 - a hook must never break data collection
+                log.exception("status hook failed")
 
     # --- alarms -------------------------------------------------------------------------------
 

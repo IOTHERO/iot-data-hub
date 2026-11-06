@@ -3,6 +3,7 @@
 // and "only his own scenes". The server enforces all of it; this page only edits it.
 
 import { api, dialog, errorText, h, icon, name, t, toast, viewsOf } from "./core.js";
+import { contactsSection } from "./more.js";
 
 const BUILT_IN = ["customer_owner", "customer_member", "customer_viewer"];
 const PERM_ICON = { "device.view": "home", "device.operate": "power", "scene.run": "star",
@@ -43,13 +44,26 @@ export function members(state, orgId) {
     // members: tap one to change his level or remove him
     const memberRows = rows.map((m) => h("button", { class: "reading pick", onclick: async () => {
       const sel = choose(m.role_id);
+      // the member's own mobile: whose this account is, and where the alarms reach them
+      const phone = h("input", { class: "input ltr", type: "tel", inputmode: "tel", value: m.phone || "",
+        placeholder: "0912…", "aria-label": t("members.phone") });
       const answer = await dialog(m.display_name, h("div", { class: "stack" },
-        h("span", { class: "tiny muted ltr" }, m.email || ""), h("span", { class: "label" }, t("members.role")), sel,
+        h("span", { class: "tiny muted ltr" }, m.email || ""),
+        h("span", { class: "label" }, t("members.phone")), phone,
+        h("p", { class: "tiny muted lh" }, t("members.phone_help")),
+        h("span", { class: "label" }, t("members.role")), sel,
         h("p", { class: "tiny muted lh" }, t("levels.change_help"))),
       [["remove", t("members.remove"), "danger"], [null, t("common.cancel")], ["save", t("common.save"), "primary"]]);
       try {
-        if (answer === "save" && sel.value !== m.role_id) {
-          await api("PATCH", `/api/platform/organizations/${orgId}/members/${m.user_role_id}`, { role: sel.value });
+        if (answer === "save") {
+          const number = phone.value.trim().replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/[\s-]/g, "");
+          if (number !== (m.phone || "")) {
+            await api("PUT", `/api/platform/organizations/${orgId}/members/${m.user_role_id}/phone`,
+              { phone: number || null });
+          }
+          if (sel.value !== m.role_id) {
+            await api("PATCH", `/api/platform/organizations/${orgId}/members/${m.user_role_id}`, { role: sel.value });
+          }
           toast(t("common.saved"), "ok");
         } else if (answer === "remove") {
           if (!confirm(t("members.remove_confirm"))) return;
@@ -58,7 +72,8 @@ export function members(state, orgId) {
         draw();
       } catch (err) { toast(errorText(err), "err"); }
     } }, h("span", { class: "stack tight" }, h("span", {}, m.display_name),
-      h("span", { class: "tiny muted ltr" }, m.email || "")),
+      h("span", { class: "tiny muted ltr" }, m.email || ""),
+      h("span", { class: `tiny ltr ${m.phone ? "" : "warn-text"}` }, m.phone || t("members.no_phone"))),
     h("span", { class: `chip ${m.role_id.startsWith("lvl_") ? "violet" : m.role_id === "customer_owner" ? "accent" : ""}` },
       roleName(m.role_id, lv.levels))));
 
@@ -97,6 +112,7 @@ export function members(state, orgId) {
 
     body.replaceChildren(
       h("section", { class: "stack" }, h("h2", { class: "h2" }, t("members.title")), ...memberRows),
+      contactsSection(orgId, true),
       h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("members.invite")), email,
         h("span", { class: "label" }, t("members.role")), role),
       invite,

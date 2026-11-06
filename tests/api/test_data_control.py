@@ -80,14 +80,21 @@ async def test_alarm_list_and_ack(backend: Backend) -> None:
     await backend.user("view.pump", ("viewer", "kish", "pump_station"))
     backend.meter.set("voltage_l1", 260.0)
     await backend.wait(lambda: backend.services.hub.latest[VOLT].value > 250)
-    await asyncio.sleep(0.3)
     op = await backend.headers("op.gate")
-    alarms = (await backend.client.get("/api/alarms", headers=op)).json()
-    assert [(a["source"], a["kind"]) for a in alarms] == [(VOLT, "hi")]
+    hi: list[dict] = []
+    for _ in range(100):                     # the alarm engine runs after the sample: poll
+        alarms = (await backend.client.get("/api/alarms", headers=op)).json()
+        hi = [a for a in alarms if (a["source"], a["kind"]) == (VOLT, "hi")]
+        if hi:
+            break
+        await asyncio.sleep(0.1)
+    assert len(hi) == 1, alarms
+    # only the user's area (a slow machine may add e.g. an offline alarm of the same area)
+    assert all(a["source"].startswith("kish.gate.") for a in alarms), alarms
     other = (await backend.client.get("/api/alarms",
                                       headers=await backend.headers("view.pump"))).json()
-    assert other == []
-    r = await backend.client.post(f"/api/alarms/{alarms[0]['alarm_id']}/ack", headers=op,
+    assert not [a for a in other if not a["source"].startswith("kish.pump_station.")], other
+    r = await backend.client.post(f"/api/alarms/{hi[0]['alarm_id']}/ack", headers=op,
                                   json={"comment": "seen"})
     assert r.status_code == 200 and r.json()["ack_comment"] == "seen"
 

@@ -53,6 +53,7 @@ const PATHS = {
   sliders: "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4",
   gear: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12h2M3 12h2M12 3v2M12 19v2M17 7l1.4-1.4M5.6 18.4L7 17M17 17l1.4 1.4M5.6 5.6L7 7",
   chevron: "M6 9l6 6 6-6",
+  grip: "M5 8h14M5 12h14M5 16h14",
   next: "M15 6l-6 6 6 6",
   bulb: "M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z",
   snow: "M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7M9 4l3 2 3-2M9 20l3-2 3 2",
@@ -130,6 +131,45 @@ export function section(ic, title, hint, ...content) {
         hint ? h("span", { class: "tiny muted" }, hint) : null)),
     ...content);
 }
+
+/** A row that scrolls sideways (quick scenes, shortcuts): a glass arrow at an edge while more
+ * waits past it, gently moving so the eye finds it; a touch on it scrolls, a drag still works. */
+export function scroller(row) {
+  row.classList.add("hs-row");
+  const rtl = () => document.documentElement.dir === "rtl";
+  const arrow = (side) => h("button", { type: "button", class: `hs-arrow ${side} hidden`, tabindex: -1,
+    "aria-label": t(side === "end" ? "common.more_next" : "common.more_prev"),
+    onclick: () => {
+      const step = Math.max(row.clientWidth * 0.7, 120) * (side === "end" ? 1 : -1) * (rtl() ? -1 : 1);
+      row.scrollBy({ left: step, behavior: "smooth" });
+    } }, icon((side === "end") === rtl() ? "next" : "back"));
+  const start = arrow("start");
+  const end = arrow("end");
+  const box = h("div", { class: "hs" }, row, start, end);
+  const update = () => {
+    const max = row.scrollWidth - row.clientWidth;
+    const pos = Math.abs(row.scrollLeft);
+    start.classList.toggle("hidden", max <= 2 || pos <= 2);
+    end.classList.toggle("hidden", max <= 2 || pos >= max - 2);
+  };
+  row.addEventListener("scroll", update, { passive: true });
+  if ("ResizeObserver" in window) new ResizeObserver(update).observe(row);
+  new MutationObserver(update).observe(row, { childList: true });
+  requestAnimationFrame(update);
+  return box;
+}
+
+/** The home screen's sections in the order and with the visibility the person chose (Me >
+ * home layout); kept on this phone. */
+export const HOME_SECTIONS = ["today", "custom", "quick", "groups", "devices"];
+export function homeLayout() {
+  let rows = [];
+  try { rows = JSON.parse(saved.get("app.layout") || "[]"); } catch { rows = []; }
+  const known = rows.filter((r) => HOME_SECTIONS.includes(r.key));
+  for (const key of HOME_SECTIONS) if (!known.some((r) => r.key === key)) known.push({ key, on: true });
+  return known;
+}
+export function setHomeLayout(rows) { saved.set("app.layout", rows ? JSON.stringify(rows) : null); }
 
 /** The views of these devices (as /my/devices listed them) in one request, in the same order;
  * null where a device has none. */

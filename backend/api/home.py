@@ -262,6 +262,8 @@ async def save_label(device_id: str, key: str, body: LabelIn, svc: ServicesDep,
     pulse = (body.pulse_s or 1.0) if body.mode == "momentary" else None
     await svc.store.home.save_label(owner, device_id, key, name=name, icon=body.icon,
                                     favorite=body.favorite, mode=body.mode, pulse_s=pulse)
+    if svc.home_alerts is not None:
+        svc.home_alerts.changed()           # a sensor may have become (or stopped being) an alarm
     return {"device_id": device_id, "key": key, "name": name, "icon": body.icon,
             "favorite": body.favorite, "mode": body.mode, "pulse_s": pulse}
 
@@ -839,6 +841,36 @@ async def delete_level(org_id: str, role_id: str, svc: ServicesDep, p: Viewer,
                                    detail={"org_id": org_id, "role_id": role_id})
 
 
+class MemberPhoneIn(BaseModel):
+    phone: str | None = Field(default=None, pattern=PHONE)     # None: no number any more
+
+
+@router.put("/api/platform/organizations/{org_id}/members/{user_role_id}/phone")
+async def set_member_phone(org_id: str, user_role_id: int, body: MemberPhoneIn,
+                           svc: ServicesDep, p: Viewer, request: Request) -> dict[str, Any]:
+    """The member's mobile number, kept with the member in the home's access page (so the home
+    knows whose each account is). It is one of the home's contacts: the alarms reach it when it
+    is picked in the security section; a new number gets the alarm SMS."""
+    from backend.sms import normalize_phone
+
+    _member(p, org_id, "org.members")
+    target = next((m for m in await svc.store.accounts.members(org_id)
+                   if m.user_role_id == user_role_id), None)
+    if target is None:
+        raise NotFound("member not found")
+    phone = normalize_phone(body.phone) if body.phone else None
+    others = [c for c in await svc.store.home.contacts(org_id) if c.member_id != target.user_id]
+    if phone and any(c.phone == phone and c.member_id is not None for c in others):
+        raise Conflict("this number is already another member's", code="duplicate_phone")
+    if phone and len(others) >= 10 and not any(c.phone == phone for c in others):
+        raise Invalid("a home has 10 contacts at most", code="too_many")
+    await svc.store.home.set_member_phone(org_id, target.user_id, target.display_name, phone)
+    await svc.store.add_auth_audit("member_phone_set", p.username, user_id=target.user_id,
+                                   actor_id=p.user_id, client_addr=client_addr(request),
+                                   detail={"org_id": org_id, "set": phone is not None})
+    return {"user_role_id": user_role_id, "phone": phone}
+
+
 class MemberRoleIn(BaseModel):
     role: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
 
@@ -890,6 +922,7 @@ async def _events(svc: ServicesDep, p: Principal, org: str | None) -> AsyncItera
         return set(await svc.store.accounts.access_levels(orgs, [r.device_id for r in rows]))
 
     devices = await allowed()
+    homes = await _my_orgs(svc, p, org)
     queue = svc.hub.bus.subscribe()
     loop = asyncio.get_running_loop()
     recheck = loop.time() + 60
@@ -904,6 +937,7 @@ async def _events(svc: ServicesDep, p: Principal, org: str | None) -> AsyncItera
                 event = {}
             if loop.time() > recheck:              # devices added or shares ended meanwhile
                 devices = await allowed()
+                homes = await _my_orgs(svc, p, org)
                 recheck = loop.time() + 60
             if event is None:
                 return
@@ -916,16 +950,24 @@ async def _events(svc: ServicesDep, p: Principal, org: str | None) -> AsyncItera
                     yield f"event: samples\ndata: {json.dumps(mine, ensure_ascii=False)}\n\n"
             elif kind == "status" and event.get("device_id") in devices:
                 yield f"event: status\ndata: {json.dumps(event)}\n\n"
+            elif kind == "security" and event.get("org_id") in homes:
+                data = json.dumps({"org_id": event["org_id"], **event["modes"]})
+                yield f"event: security\ndata: {data}\n\n"
+            elif kind == "alert" and event.get("device_id") in devices:
+                data = json.dumps(event["alert"], ensure_ascii=False)
+                yield f"event: alert\ndata: {data}\n\n"
     finally:
         svc.hub.bus.unsubscribe(queue)
 
 
 @router.get("/api/platform/my/stream")
 async def stream(svc: ServicesDep, p: Viewer, org: OrgQuery = None) -> StreamingResponse:
-    """Server-sent events for the caller's devices: ``samples`` (tag, value, ts, quality) and
-    ``status`` (online / offline). Read with fetch() and the bearer token (EventSource cannot
-    send headers); a keep-alive every 15 s; the stream ends after five minutes so the app
-    reconnects with a current token (a signed-out session gets no new one)."""
+    """Server-sent events for the caller's devices: ``samples`` (tag, value, ts, quality),
+    ``status`` (online / offline), ``alert`` (a security alert opened, tripped again, seen or
+    cleared: backend/api/alerts.py) and ``security`` (a home's scenarios switched). Read with
+    fetch() and the bearer token (EventSource cannot send headers); a keep-alive every 15 s;
+    the stream ends after five minutes so the app reconnects with a current token (a
+    signed-out session gets no new one)."""
     return StreamingResponse(_events(svc, p, org), media_type="text/event-stream",
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
@@ -1096,7 +1138,7 @@ LOCAL_TRIGGERS = ("time", "interval", "value")
 async def local_rules(svc: ServicesDep, device_id: str) -> dict[str, Any]:
     """The owner home's automations marked ``local`` that only read and write this device,
     in the form the device runs them: tags by key, Jalali weekdays (0 = Saturday), the
-    hub's UTC offset and the coming holidays."""
+    hub's UTC offset, the coming holidays and the home's security scenarios."""
     from backend.automations import AutomationIn
 
     owner = await svc.store.accounts.owner_org(None, device_id)
@@ -1134,8 +1176,17 @@ async def local_rules(svc: ServicesDep, device_id: str) -> dict[str, Any]:
     holidays += [(today + timedelta(days=i)).isoformat() for i in range(60)
                  if jalali.fixed_holiday(today + timedelta(days=i)) is not None]
     offset = eng.clock().astimezone(eng.tz).utcoffset() or timedelta()
+    # the home's security scenarios: a device cut off from the server still knows whether it is
+    # armed (its own siren / SMS rules check them; docs/platform.md "Security scenarios")
+    from hub.storage.alerts import SECURITY_MODES, security_default
+
+    record = security_default()
+    if owner:
+        record = (await svc.store.alerts.security([owner])).get(owner) or record
+    security = {k: record[k] for k in SECURITY_MODES} | {   # and which of its outputs is a siren
+        "sirens": [x["key"] for x in record["sirens"] if x["device_id"] == device_id]}
     body = {"rules": rules, "utc_offset_min": int(offset.total_seconds() // 60),
-            "holidays": sorted(set(holidays)), "offline_after_s": 60}
+            "holidays": sorted(set(holidays)), "offline_after_s": 60, "security": security}
     version = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
     # not part of the version: the device sets its clock from it when it has no NTP
     now = eng.clock().astimezone(UTC).isoformat().replace("+00:00", "Z")

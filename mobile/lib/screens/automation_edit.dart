@@ -141,6 +141,38 @@ class _AutomationEditScreenState extends State<AutomationEditScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Run the saved actions once now, whatever the trigger (the web app's "test").
+  Future<void> _test() async {
+    final s = widget.state;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final r = await s.api.call('POST',
+          '/api/platform/organizations/${widget.orgId}/automations/${widget.record!['automation_id']}/test') as Map;
+      messenger.showSnackBar(SnackBar(content: Text(s.t('auto.tested', {'n': s.i18n.num(((r['detail'] as List?) ?? const []).length)}))));
+    } on ApiError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _delete() async {
+    final s = widget.state;
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      content: Text(s.t('auto.delete_confirm')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(s.t('common.cancel'))),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(s.t('auto.delete'))),
+      ],
+    ));
+    if (ok != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await s.api.call('DELETE', '/api/platform/organizations/${widget.orgId}/automations/${widget.record!['automation_id']}');
+      if (mounted) Navigator.pop(context, true);
+    } on ApiError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   Future<void> _pickTime() async {
     final parts = at.split(':');
     final picked = await showTimePicker(context: context,
@@ -155,7 +187,17 @@ class _AutomationEditScreenState extends State<AutomationEditScreen> {
     final s = widget.state;
     final devices = views.where((v) => _tags(v['device']['device_id'] as String, outputs: true).isNotEmpty).toList();
     return Scaffold(
-      appBar: AppBar(title: Text(s.t(widget.record == null ? 'auto.new' : 'auto.edit'))),
+      appBar: AppBar(
+        title: Text(s.t(widget.record == null ? 'auto.new' : 'auto.edit')),
+        actions: [
+          if (widget.record != null)
+            TextButton.icon(onPressed: _busy ? null : _test, icon: const Icon(Icons.play_arrow_rounded),
+                label: Text(s.t('auto.test'))),
+          if (widget.record != null)
+            IconButton(tooltip: s.t('auto.delete'), icon: const Icon(Icons.delete_outline_rounded),
+                onPressed: _busy ? null : _delete),
+        ],
+      ),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
         TextField(controller: _name, decoration: InputDecoration(labelText: s.t('auto.name'))),
         const SizedBox(height: 22),
@@ -176,8 +218,8 @@ class _AutomationEditScreenState extends State<AutomationEditScreen> {
           const SizedBox(height: 10),
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (var d = 0; d < 7; d++)
-              FilterChip(label: Text(s.t('week.$d')), selected: weekdays.contains(d),
-                  onSelected: (on) => setState(() => on ? weekdays.add(d) : weekdays.remove(d))),
+              WebTab(s.t('week.$d'), on: weekdays.contains(d),
+                  onTap: () => setState(() => weekdays.contains(d) ? weekdays.remove(d) : weekdays.add(d))),
           ]),
           Text(weekdays.isEmpty ? s.t('auto.every_day') : '', style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
         ],

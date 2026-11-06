@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../ui/kit.dart';
 
 const levelPermissions = [
   'device.view', 'device.operate', 'scene.run', 'automation.manage', 'timer.manage',
@@ -183,8 +184,8 @@ class _LevelEditScreenState extends State<LevelEditScreen> {
         if (hoursOn) ...[
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (var d = 0; d < 7; d++)
-              FilterChip(label: Text(s.t('week.$d')), selected: days.contains(d),
-                  onSelected: (on) => setState(() => on ? days.add(d) : days.remove(d))),
+              WebTab(s.t('week.$d'), on: days.contains(d),
+                  onTap: () => setState(() => days.contains(d) ? days.remove(d) : days.add(d))),
           ]),
           const SizedBox(height: 8),
           Row(children: [

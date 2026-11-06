@@ -6,6 +6,7 @@ import { startChecks } from "./checks.js";
 import { splash } from "./splash.js";
 import { refreshKeys } from "./local.js";
 import { automationsPage } from "./auto.js";
+import { alertEvent, alertsPage, loadAlerts } from "./alerts.js";
 import * as more from "./more.js";
 import * as v from "./views.js";
 
@@ -48,7 +49,12 @@ async function render() {
     }
     refreshKeys(api);                      // the local keys, while the server is reachable
     if (!state.stopLive) {                 // one live connection while signed in
-      state.stopLive = live((type, data) => { if (state.onLive) state.onLive(type, data); });
+      state.stopLive = live((type, data) => {
+        if (type === "alert") alertEvent(data);          // the alarm bar and page follow by themselves
+        else if (type === "security") document.querySelector(".security-box")?.reload?.();
+        else if (state.onLive) state.onLive(type, data);
+      });
+      loadAlerts();
     }
     more.checkPresence();
   }
@@ -65,15 +71,20 @@ async function render() {
       return show(v.login());
     case "device":
       if (args[1] === "settings") return show(v.deviceSettings(state, args[0]), "home");
-      return show(v.device(state, args[0]), "home");
+      return show(v.device(state, args[0], args[1] === "focus" ? args[2] : null), "home");
     case "add":
       if (args[0] === "edge") return show(v.addEdge(state, args[1] || null), "add");
       return show(v.add(state), "add");
     case "me": return show(v.me(state), "me");
     case "notifications": return show(v.notifications(state), "home");
+    case "alerts": {
+      const page = alertsPage();
+      state.cleanup = page.cleanup;
+      return show(page, "home");
+    }
     case "auto": {
       const tab = args[0] === "automations" ? "automations" : "scenes";
-      return show(automationsPage(tab), tab);
+      return show(automationsPage(tab, state.me), tab);
     }
     case "members": return show(v.members(state, args[0]), "me");
     case "group": return show(more.groupPage(state, args[0]), "home");
@@ -94,9 +105,22 @@ function show(node, navItem = null) {
   show.timer = setTimeout(() => root.classList.remove("enter"), 1400);
 }
 
+// back goes to the page the person came from (not always home): the pages seen in this visit,
+// newest last; the browser's / phone's own back is recognised as a step back as well
+const trail = [location.hash || "#/home"];
 window.addEventListener("hashchange", () => {
+  const now = location.hash || "#/home";
+  if (trail.length > 1 && trail[trail.length - 2] === now) trail.pop();
+  else if (trail[trail.length - 1] !== now) trail.push(now);
+  if (trail.length > 50) trail.shift();
   if (!location.hash.startsWith("#/login")) state.me = session.signedIn ? state.me : null;
   render();
+});
+document.addEventListener("click", (ev) => {
+  const back = ev.target.closest?.(".top-bar > a.icon-btn:first-child");
+  if (!back || trail.length < 2 || ev.ctrlKey || ev.metaKey) return;
+  ev.preventDefault();
+  history.back();                       // the page before; its link (href) stays the fallback
 });
 window.addEventListener("offline", () => document.body.classList.add("is-offline"));
 window.addEventListener("online", () => document.body.classList.remove("is-offline"));

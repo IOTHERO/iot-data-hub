@@ -216,6 +216,8 @@ class ClaimService:
             raise Invalid(INVALID, code="invalid_claim")
         if target.owner_org is not None:          # moved from another owner: their phones'
             await self.svc.local.rotate([target.device_id], "transferred")   # copy stops
+            await self.store.alerts.forget_device(target.device_id)   # their alerts, remotes
+        self._alerts_changed()
         if name:
             await self.store.platform.update_device(None, target.device_id, name=name)
         await self.store.add_auth_audit(
@@ -252,6 +254,11 @@ class ClaimService:
         return {"identifier": target.identifier, "claim_code": format_code(code),
                 "qr": self.qr(target.identifier, code)}
 
+    def _alerts_changed(self) -> None:
+        """Owners changed: the alarm sensors to watch change too (backend/home_alerts.py)."""
+        if getattr(self.svc, "home_alerts", None) is not None:
+            self.svc.home_alerts.changed()
+
     async def release(self, principal: Principal, device_id: str, client_addr: str | None
                       ) -> dict[str, Any]:
         """The owner removes the device from its account (and every share ends). The old
@@ -262,6 +269,8 @@ class ClaimService:
         if target.parent_device_id is not None:
             raise Invalid("remove it through its edge hub", code="child_device")
         await self.svc.local.rotate([device_id], "released")   # before it stops listening
+        await self.store.alerts.forget_device(device_id)
+        self._alerts_changed()
         ids = await self.store.claims.release(device_id, "sold", self.clock())
         await self._stop(ids)
         code = new_code()

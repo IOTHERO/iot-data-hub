@@ -335,6 +335,68 @@ While the internet is down the Android app switches devices over the home Wi-Fi
   when a request fails for lack of network, answers from them; writes go to the device through
   the native bridge. The web version (iPhone) shows the last state read-only.
 
+## Security alerts (migration 0021)
+
+A motion sensor (a hallway PIR), a door / window magnet and a smoke detector are a burglar or
+fire alarm wherever they are. An on/off input (`digital_input`, `bool`) counts when its icon -
+the home's own (`PUT .../labels/{key}` with `icon`) or the template's `ui.icon` - is `motion`,
+`magnet` or `smoke`; the app's "name and define" sheet sets it.
+
+* `backend/home_alerts.py` watches those inputs (the list is refreshed every minute and when a
+  label is saved or a device changes hands) through `Hub.sample_hooks`: a dictionary lookup per
+  sample. When one goes from idle to tripped the hub opens an alert for the owner home, or counts
+  one more trip on the open one and asks for it to be seen again; the alert goes on the live
+  stream (`event: alert`) and, for a new alert, the home's SMS / call contacts are told.
+* `GET /api/platform/my/alerts` - the open alerts of the devices the caller sees, with the
+  device's and the sensor's names; `POST .../alerts/{id}/seen`, `.../alerts/{id}/clear`,
+  `.../alerts/seen`, `.../alerts/clear` (all of them). Audit: `security_alert_seen`,
+  `security_alerts_cleared`. A device that changes hands takes its open alerts with it.
+* The apps show a pulsing red alarm bar on the home screen while any alert is open, the alarm
+  list (seen, swipe to clear, clear all), and a touch opens the device page at that sensor.
+
+### Security scenarios, zones and the siren (migration 0022)
+
+`GET / PUT /api/platform/organizations/{org}/security` (switching: `device.operate` in the home):
+`burglar` (motion and magnets), `night` (magnets only), `fire` (smoke, on by default), `offline`
+(a guarding device - one with alarm sensors, or an edge hub - cut off for 3 minutes; on by
+default), `sirens` (up to 8 `{device_id, key}`: on/off outputs of any of the home's modules) and
+`siren_s` (10-1800). A tripped zone is an alarm only while its scenario is on. Zones and the siren
+are not fixed pins: a zone is any input of any module given a type, the siren any outputs the home
+picks (an 8-output module's relay 3 while the zones are wired to an 8-input module). The siren is
+switched on at every trip of an armed zone, through the control-safety layer as the person who
+last saved the home's security, and off after `siren_s`, on "seen" / "clear", or on disarming.
+The answer also lists the zones by module and how many contacts get the SMS. Who is told is
+picked by name: `PUT .../security/recipients {sms: [contact_id], call: [contact_id]}`
+(`home.settings`). Numbers live in one place, the home's access page: a member's own number is set
+with the member (`PUT .../members/{user_role_id}/phone {phone|null}`, `org.members`; a contact row
+with `member_id`, removed with the member; audit `member_phone_set`), and people without an
+account (a neighbour) are the other contacts. The device's rules
+carry `security` = the scenarios plus `sirens`: the keys of **its own** outputs that are sirens;
+linking a zone on one module to a siren on another without the internet is the home hub's job.
+Audit: `security_mode_changed`; live: `event: security`.
+
+## RF remotes (433 / 315 MHz, migration 0021)
+
+A module with an RF receiver and transmitter learns the code of a remote's key into a numbered
+slot of its own memory and sends a slot's code again on request. Its template carries four tags,
+all or none (`hub/platform/template.py` checks them):
+
+| `ui.role`   | Tag                                            | The device                                   |
+|-------------|------------------------------------------------|----------------------------------------------|
+| `rf_band`   | writable integer, `states` 315 and / or 433    | listens / sends on that band                 |
+| `rf_learn`  | writable integer slot (`min` >= 1, `max`)      | listens; the next key pressed goes into that slot |
+| `rf_learnt` | integer reading                                 | reports the slot it has just learnt          |
+| `rf_send`   | writable integer slot                           | sends the code kept in that slot             |
+
+The home names its remotes and their keys (`GET/POST /api/platform/my/devices/{id}/remotes`,
+`PUT/DELETE .../remotes/{rid}`, `POST .../remotes/{rid}/keys`, `PUT/DELETE .../keys/{kid}`); a new
+key takes the lowest free slot. `POST .../keys/{kid}/learn` writes `rf_band` and `rf_learn` and
+waits up to 25 s for `rf_learnt` = the slot (`learnt`, else `timeout`); `POST .../keys/{kid}/send`
+writes `rf_send`. Both are writes through the control-safety layer as the caller (owner or
+operator), so the audit, the rate limit and the device's command acknowledgement apply as for any
+command. The codes themselves never leave the device. `simulators/native_device.py` plays such a
+module (`rf_press_s`, `rf_memory`, `rf_sent`).
+
 ## Who may command a platform device
 
 `device.operate` through an organization grant, in an organization that owns the device or

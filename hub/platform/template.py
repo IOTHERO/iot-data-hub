@@ -84,6 +84,9 @@ ANALOG_KINDS = frozenset({TagKind.ANALOG_INPUT, TagKind.ANALOG_OUTPUT})
 Text = Annotated[str, Field(min_length=1, max_length=80)]
 
 
+RF_ROLES = frozenset({"rf_band", "rf_learn", "rf_learnt", "rf_send"})
+
+
 class TagUi(_Strict):
     """How apps show the tag (the dashboard builds cards, controls and charts from this)."""
 
@@ -95,8 +98,12 @@ class TagUi(_Strict):
     icon: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,39}$")
     # the tags of one air conditioner / thermostat (the same ``group``, or the device's only
     # set): the app shows them as one climate panel (on/off, mode, set point, fan speed, room)
+    # an RF module (433 / 315 MHz remotes) that learns a key's code into a numbered slot of its
+    # memory and sends a slot's code again: rf_band (which band to listen on: 315 / 433),
+    # rf_learn (learn into this slot), rf_learnt (the slot it just learnt), rf_send (send this
+    # slot). The app shows the home's remotes and their keys as buttons (backend/api/rf.py).
     role: Literal["climate_power", "climate_mode", "climate_setpoint", "climate_fan",
-                  "climate_temp"] | None = None
+                  "climate_temp", "rf_band", "rf_learn", "rf_learnt", "rf_send"] | None = None
 
 
 class TagDefinition(_Strict):
@@ -262,7 +269,17 @@ class ProductTemplate(_Strict):
             seen.add((t.ui.group, role))
             writable = t.access is Access.READ_WRITE
             numeric = t.data_type in NUMERIC_TYPES
-            if role == "climate_power":
+            integer = t.data_type in INTEGER_RANGES
+            if role == "rf_band":
+                ok = writable and integer and bool(t.states) and set(t.states) <= {315, 433}
+                need = "a controllable integer with the states 315 and / or 433"
+            elif role in ("rf_learn", "rf_send"):
+                ok = writable and integer and t.min is not None and t.min >= 1 and t.max is not None
+                need = "a controllable integer slot number (min >= 1, max)"
+            elif role == "rf_learnt":
+                ok = integer
+                need = "an integer (the slot just learnt)"
+            elif role == "climate_power":
                 ok = writable and t.data_type is DataType.BOOL
                 need = "a controllable bool"
             elif role in ("climate_mode", "climate_fan"):
@@ -276,6 +293,10 @@ class ProductTemplate(_Strict):
                 need = "a number"
             if not ok:
                 raise ValueError(f"{t.key}: {role} needs {need}")
+        rf = {r for _, r in seen if r.startswith("rf_")}
+        if rf and rf != RF_ROLES:
+            raise ValueError(f"an RF module needs all of {', '.join(sorted(RF_ROLES))}; "
+                             f"missing {', '.join(sorted(RF_ROLES - rf))}")
 
     def _check_formulas(self) -> None:
         calc = calc_device(self, "dtemplatecheck000000000", "check")

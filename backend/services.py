@@ -47,6 +47,7 @@ class Services:
     tcp_ingest: Any = None      # backend.tcp_ingest.TcpIngest (HUB_TCP_INGEST_PORT)
     automations: Any = None     # backend.automations.AutomationEngine (scenes, automations)
     versions: Any = None        # backend.versions.VersionService (upgrades, firmware)
+    home_alerts: Any = None     # backend.home_alerts.HomeAlerts (PIR / magnet / smoke, 0021)
 
     def __post_init__(self) -> None:
         from backend.config_admin import ConfigAdmin
@@ -121,6 +122,9 @@ class Services:
         if self.versions is None:
             from backend.versions import VersionService
             self.versions = VersionService(self)
+        if self.home_alerts is None:
+            from backend.home_alerts import HomeAlerts
+            self.home_alerts = HomeAlerts(self)
         if self.maintenance is None:
             self.maintenance = Maintenance(self.store, self.settings.maintenance(),
                                            database_url=self.settings.database_url,
@@ -154,6 +158,8 @@ class Services:
             await self.scheduler.start()
         if self.automations is not None:
             await self.automations.start()
+        if self.home_alerts is not None:
+            await self.home_alerts.start()
         if self.opcua_server is not None:
             await self.opcua_server.start()
         if self.northbound is not None:
@@ -252,6 +258,8 @@ class Services:
             await self.scheduler.stop()
         if self.automations is not None:
             await self.automations.stop()
+        if self.home_alerts is not None:
+            await self.home_alerts.stop()
         if self.maintenance is not None:
             await self.maintenance.stop()
         if self.notifier is not None:

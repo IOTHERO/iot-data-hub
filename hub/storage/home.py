@@ -53,6 +53,7 @@ class ContactRecord(BaseModel):
     sms: bool = True
     call: bool = False
     command: bool = False
+    member_id: int | None = None        # the member whose own number this is (0022)
 
 
 class TicketRecord(BaseModel):
@@ -251,6 +252,39 @@ class HomeStore:
                     "WHERE contact_id=%s AND org_id=%s RETURNING *",
                     (name, phone, sms, call, command, contact_id, org_id))).fetchone()
         return ContactRecord.model_validate(row) if row else None
+
+    async def set_member_phone(self, org_id: str, member_id: int, name: str, phone: str | None
+                               ) -> ContactRecord | None:
+        """A member's own mobile number in the home (None: none any more). A new one gets the
+        alarm SMS; a number already in the home as a contact becomes this member's."""
+        async with self._conn() as conn, conn.transaction():
+            if phone is None:
+                await conn.execute("DELETE FROM home_contacts WHERE org_id=%s AND member_id=%s",
+                                   (org_id, member_id))
+                return None
+            await conn.execute("UPDATE home_contacts SET member_id = NULL WHERE org_id=%s AND "
+                               "member_id=%s AND phone<>%s", (org_id, member_id, phone))
+            await conn.execute("DELETE FROM home_contacts WHERE org_id=%s AND member_id IS NULL "
+                               "AND phone IN (SELECT phone FROM home_contacts WHERE org_id=%s "
+                               "AND member_id=%s)", (org_id, org_id, member_id))
+            row = await (await conn.execute(
+                "INSERT INTO home_contacts (org_id, name, phone, sms, member_id, created_by) "
+                "VALUES (%s,%s,%s,true,%s,%s) ON CONFLICT (org_id, phone) DO UPDATE SET "
+                "member_id=EXCLUDED.member_id, name=EXCLUDED.name RETURNING *",
+                (org_id, name, phone, member_id, member_id))).fetchone()
+            await conn.execute("DELETE FROM home_contacts WHERE org_id=%s AND member_id=%s "
+                               "AND contact_id<>%s", (org_id, member_id, row["contact_id"]))
+        return ContactRecord.model_validate(row)
+
+    async def set_alarm_recipients(self, org_id: str, sms: Sequence[int], call: Sequence[int]
+                                   ) -> list[ContactRecord]:
+        """Who of the home's contacts gets the alarms by SMS and who by a call (picked by name in
+        the security section; the numbers stay where the home keeps them)."""
+        async with self._conn() as conn:
+            rows = await (await conn.execute(
+                "UPDATE home_contacts SET sms = contact_id = ANY(%s), call = contact_id = ANY(%s) "
+                "WHERE org_id=%s RETURNING *", (list(sms), list(call), org_id))).fetchall()
+        return [ContactRecord.model_validate(r) for r in rows]
 
     async def delete_contact(self, org_id: str, contact_id: int) -> bool:
         async with self._conn() as conn:

@@ -171,6 +171,40 @@ def test_climate_roles() -> None:
                                             "ac_power": binding["ac_power"]}}}})
 
 
+RF_TAGS = [
+    {"key": "rf_band", "kind": "parameter", "display_name": {"en": "Band"}, "data_type": "uint16",
+     "access": "read_write", "min": 315, "max": 433, "states": {315: "315 MHz", 433: "433 MHz"},
+     "ui": {"role": "rf_band", "visible": False}},
+    {"key": "rf_learn", "kind": "parameter", "display_name": {"en": "Learn"}, "data_type": "uint16",
+     "access": "read_write", "min": 1, "max": 64, "ui": {"role": "rf_learn", "visible": False}},
+    {"key": "rf_learnt", "kind": "variable", "display_name": {"en": "Got"}, "data_type": "uint16",
+     "ui": {"role": "rf_learnt", "visible": False}},
+    {"key": "rf_send", "kind": "parameter", "display_name": {"en": "Send"}, "data_type": "uint16",
+     "access": "read_write", "min": 1, "max": 64, "ui": {"role": "rf_send", "visible": False}},
+]
+RF_BINDING = {k: {"register_type": "holding", "address": i}
+              for i, k in enumerate(["rf_band", "rf_learn", "rf_learnt", "rf_send"])}
+
+
+def test_rf_roles() -> None:
+    """An RF module: band, learn into a slot, the slot learnt, send a slot; all four or none."""
+    template = ProductTemplate.model_validate(
+        {"tags": RF_TAGS, "bindings": {"modbus_tcp": {"tags": RF_BINDING}}})
+    assert [t.ui.role for t in template.tags] == ["rf_band", "rf_learn", "rf_learnt", "rf_send"]
+    for tags, message in (
+        (RF_TAGS[:3], "needs all of .* missing rf_send"),
+        ([RF_TAGS[0] | {"states": {433: "433 MHz", 868: "868 MHz"}, "max": 868}, *RF_TAGS[1:]],
+         "rf_band needs"),
+        ([RF_TAGS[0], RF_TAGS[1] | {"min": 0}, *RF_TAGS[2:]], "rf_learn needs"),
+        ([*RF_TAGS[:3],
+          RF_TAGS[3] | {"access": "read", "kind": "variable", "min": None, "max": None}],
+         "rf_send needs"),
+    ):
+        with pytest.raises(ValidationError, match=message):
+            ProductTemplate.model_validate({"tags": tags, "bindings": {"modbus_tcp": {"tags": {
+                t["key"]: RF_BINDING[t["key"]] for t in tags}}}})
+
+
 @pytest.mark.parametrize(("change", "message"), [
     ({"tags": [*RELAYS, POWER, POWER]}, "duplicate tag keys: power"),
     ({"tags": [*RELAYS, POWER | {"access": "read_write"}]}, "read-only"),

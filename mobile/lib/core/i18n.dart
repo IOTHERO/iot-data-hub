@@ -53,6 +53,19 @@ class I18n {
     return num('${j[0]}/${two(j[1])}/${two(j[2])}');
   }
 
+  /// How long ago, as the web app's when(): "now", "5 min ago", "3 h ago", else the date and time.
+  String when(Object? iso) {
+    final d = DateTime.tryParse('${iso ?? ''}');
+    if (d == null) return '';
+    final secs = DateTime.now().toUtc().difference(d.toUtc()).inSeconds;
+    if (secs < 60) return t('time.now');
+    if (secs < 3600) return t('time.minutes', {'n': (secs / 60).round()});
+    if (secs < 86400) return t('time.hours', {'n': (secs / 3600).round()});
+    final local = d.toUtc().add(const Duration(hours: 3, minutes: 30));        // Tehran
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${date(local)} ${num('${two(local.hour)}:${two(local.minute)}')}';
+  }
+
   /// Gregorian -> Jalali [year, month, day] (the arithmetic of hub/jalali.py).
   static List<int> jalali(int gy, int gm, int gd) {
     const gdm = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];

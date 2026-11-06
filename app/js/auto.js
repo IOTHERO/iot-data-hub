@@ -4,6 +4,7 @@
 import { api, dialog, errorText, h, home, icon, name, num, SCENE_ICONS, SCENE_TONE, t, viewsOf,
   toast } from "./core.js";
 import { homes } from "./views.js";
+import { securitySection } from "./security.js";
 
 const OPS = ["gt", "lt", "eq", "ne", "ge", "le"];
 
@@ -101,8 +102,9 @@ export function describe(def, views) {
   return { when, and, then };
 }
 
-export function automationsPage(tab = "scenes") {
+export function automationsPage(tab = "scenes", me = null) {
   const body = h("div", { class: "stack" });
+  let security = null;                   // the home's security scenarios, above the scenes
   const counter = h("span", { class: "small muted" });
   let org = null;
   let views = [];
@@ -122,8 +124,10 @@ export function automationsPage(tab = "scenes") {
       return;
     }
     if (tab === "scenes") {
-      body.replaceChildren(scenes.length ? h("div", { class: "grid" }, scenes.map(sceneCard))
-        : h("div", { class: "card empty" }, icon("star", "i lg"), h("p", {}, t("auto.no_scenes"))));
+      security = security || securitySection(org, me);
+      body.replaceChildren(security, h("h2", { class: "h2" }, t("auto.scenes")),
+        scenes.length ? h("div", { class: "grid" }, scenes.map(sceneCard))
+          : h("div", { class: "card empty" }, icon("star", "i lg"), h("p", {}, t("auto.no_scenes"))));
     } else {
       const active = autos.filter((a) => a.enabled).length;
       counter.textContent = t("auto.active_of", { n: num(active), total: num(autos.length) });

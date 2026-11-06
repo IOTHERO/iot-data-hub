@@ -45,7 +45,7 @@ STABLE_S = 60.0                   # a session this long resets the delay
 def reconnect_delay(attempt: int, rng: random.Random | None = None) -> float:
     """Seconds to wait before reconnect try ``attempt`` (0 = the first after a cut): random
     0..10 s first, then doubling up to 5 minutes, always +-20 % random."""
-    rng = rng or random.Random()  # noqa: S311 - spreading reconnects, not security
+    rng = rng or random.Random()  # noqa: S311  # nosec B311 - spreading reconnects, not security
     if attempt <= 0:
         return rng.uniform(0, FIRST_DELAY_MAX_S)
     base = min(DELAY_CAP_S, FIRST_DELAY_MAX_S * 2 ** (attempt - 1))
@@ -86,6 +86,11 @@ class NativeDeviceSim:
     local_log: list[dict[str, Any]] = field(default_factory=list)   # rules run while cut off
     local_key: str | None = None            # from {"type": "config", "local": {...}}
     local_done: list[dict[str, Any]] = field(default_factory=list)  # phone commands, to report
+    # an RF module (tags rf_band, rf_learn, rf_learnt, rf_send): a key "pressed" on the remote
+    # rf_press_s after a learn command is learnt into that slot; None = nobody presses one
+    rf_press_s: float | None = 0.3
+    rf_memory: dict[int, str] = field(default_factory=dict)        # slot -> "433:5a3c11"
+    rf_sent: list[int] = field(default_factory=list)                # slots transmitted
     _nonces: dict[str, float] = field(default_factory=dict, repr=False)
     _outbox: asyncio.Queue[dict[str, Any]] | None = field(default=None, repr=False)
 
@@ -208,9 +213,23 @@ class NativeDeviceSim:
         if self.ack_only:
             return out + [{"type": "ack", "command_id": cid, "status": "done"}]
         self.values[command["tag"]] = command["value"]
+        self._rf(command["tag"], command["value"])
         return out + [{"type": "ack", "command_id": cid, "status": "done",
                        "value": command["value"]},
                       {"type": "telemetry", **self.telemetry()}]
+
+    def _rf(self, tag: str, value: Any) -> None:
+        """The RF module: learn the next key into a slot (and report it), send a slot."""
+        if tag == "rf_learn" and self.rf_press_s is not None:
+            slot, band = int(value), int(self.values.get("rf_band") or 433)
+
+            def pressed() -> None:
+                self.rf_memory[slot] = f"{band}:{random.getrandbits(24):06x}"  # noqa: S311  # nosec B311 - a made-up code
+                self.report(rf_learnt=slot)
+
+            asyncio.get_running_loop().call_later(self.rf_press_s, pressed)
+        elif tag == "rf_send" and int(value) in self.rf_memory:
+            self.rf_sent.append(int(value))
 
     # --- local control (home network) ---------------------------------------------------------
 

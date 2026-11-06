@@ -41,6 +41,7 @@ class MemberRecord(BaseModel):
     username: str
     role_id: str
     granted_at: datetime
+    phone: str | None = None            # the member's mobile in this home (0022)
 
 
 class InvitationRecord(BaseModel):
@@ -175,7 +176,8 @@ class AccountStore:
         async with self._conn() as conn:
             rows = await (await conn.execute(
                 "SELECT r.user_role_id, u.user_id, u.display_name, u.email, u.username, "
-                "r.role_id, r.granted_at FROM user_roles r JOIN users u USING (user_id) "
+                "r.role_id, r.granted_at, c.phone FROM user_roles r JOIN users u USING (user_id) "
+                "LEFT JOIN home_contacts c ON c.org_id = r.org_id AND c.member_id = r.user_id "
                 "WHERE r.org_id=%s AND u.is_active ORDER BY u.display_name, r.role_id",
                 (org_id,))).fetchall()
         return [MemberRecord.model_validate(r) for r in rows]

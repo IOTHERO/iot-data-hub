@@ -2,13 +2,21 @@
 // bell and avatar, today in the home, quick scenes, favourite shortcuts, groups, and the devices
 // as a two-column grid whose switch turns all their outputs on or off. Pull down to refresh.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/live.dart';
+import '../ui/hscroll.dart';
 import '../ui/kit.dart';
+import '../ui/outputs.dart';
 import '../ui/widgets.dart';
+import 'alerts.dart';
+import 'custom_edit.dart';
 import 'device.dart';
+import 'group_edit.dart';
 import 'notifications.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -28,11 +36,24 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> groups = [];
   final Set<String> _busy = {};
   String? error;
+  bool loaded = false;                   // the first answer is in (no "no devices" before it)
+
+  StreamSubscription<LiveEvent>? _live;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _live = widget.state.live.events.listen((e) {      // values change as they happen
+      final changed = e.type == 'samples' ? applySamples(views, e.data) : applyStatus(views, e.data);
+      if (changed && mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
   }
 
   String? get _org {
@@ -63,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       error = '$e';                              // never a silent empty screen
     }
+    loaded = true;
     if (mounted) setState(() {});
   }
 
@@ -79,7 +101,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _set(String deviceId, Map<String, dynamic> tag, bool value) async {
     final key = '$deviceId/${tag['key']}';
     setState(() => _busy.add(key));
-    final r = await sendCommand(context, widget.state, deviceId, tag['key'] as String, value);
+    final device = views.where((v) => v['device']['device_id'] == deviceId).firstOrNull?['device'];
+    if (isMomentary(tag)) {                          // a push: on, the hub turns it off
+      if (!value) {
+        if (mounted) setState(() => _busy.remove(key));
+        return;
+      }
+      await pulseOutput(context, widget.state, deviceId, tag);
+      if (mounted) setState(() => _busy.remove(key));
+      return;
+    }
+    final r = await sendCommand(context, widget.state, deviceId, tag['key'] as String, value,
+        offline: device != null && device['state'] != 'online');
     if (r != null && r['result'] == 'applied') tag['value'] = r['value'] ?? value;
     if (mounted) setState(() => _busy.remove(key));
   }
@@ -88,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _all(Map<String, dynamic> v, bool on) async {
     final id = v['device']['device_id'] as String;
     await Future.wait([
-      for (final t in _outputs(v).where((t) => t['writable'] == true && (t['value'] == true) != on)) _set(id, t, on),
+      for (final t in _outputs(v).where((t) => t['writable'] == true && !isMomentary(t) && (t['value'] == true) != on)) _set(id, t, on),
     ]);
   }
 
@@ -103,9 +136,89 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final v in views)
         for (final t in _outputs(v).where((t) => t['favorite'] == true)) (v, t),
     ];
+    // the order a person thinks in (how is the home, do something now, groups, every device);
+    // each person may reorder or hide them (Me > home layout)
+    final blocks = <String, Widget? Function()>{
+      'today': () => summary == null ? null : Section(icon: Icons.bolt_rounded, title: s.t('sec.today'),
+          hint: s.t('sec.today_hint'), children: [
+            ListenableBuilder(listenable: s.alerts, builder: (context, _) => Row(children: [
+              StatTile(label: s.t('home.temperature'),
+                  value: summary!['temperature'] == null ? '—' : '${s.i18n.num((summary!['temperature'] as num).toDouble())}°'),
+              const SizedBox(width: 10),
+              StatTile(label: s.t('home.power_now'),
+                  value: summary!['power_kw'] == null ? '—' : s.i18n.num((summary!['power_kw'] as num).toDouble()),
+                  unit: 'kW'),
+              const SizedBox(width: 10),
+              StatTile(label: s.t('home.alerts'),
+                  value: s.i18n.num(((summary!['alerts'] ?? 0) as num).toInt() + s.alerts.list.length),
+                  unit: s.t('home.active_alerts'),
+                  warn: ((summary!['alerts'] ?? 0) as num) > 0 || s.alerts.list.isNotEmpty,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlertsScreen(state: s)))),
+            ])),
+          ]),
+      'custom': () => _custom(s, tk),
+      'quick': () => scenes.isEmpty && favs.isEmpty ? null : Section(icon: Icons.star_outline_rounded,
+          title: s.t('sec.quick'), hint: s.t('sec.quick_hint'), children: [
+            if (scenes.isNotEmpty)
+              HScroll(height: 52, moreLabel: s.t('common.more_next'), children: [
+                for (final sc in scenes)
+                  ScenePill(
+                    icon: iconFor(sc['icon'] as String?),
+                    tone: tk.tone(sc['icon'] as String?),
+                    label: '${sc['name']}',
+                    onTap: () => _runScene(sc),
+                  ),
+              ]),
+            if (favs.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              RowLabel(s.t('home.favorites')),
+              const SizedBox(height: 10),
+              HScroll(height: 64, moreLabel: s.t('common.more_next'), children: [
+                for (final f in favs)
+                  _FavChip(
+                    state: s, view: f.$1, tag: f.$2,
+                    busy: _busy.contains('${f.$1['device']['device_id']}/${f.$2['key']}'),
+                    onTap: () => _set(f.$1['device']['device_id'] as String, f.$2, f.$2['value'] != true),
+                  ),
+              ]),
+            ],
+          ]),
+      'groups': () => _org == null || (groups.isEmpty && views.isEmpty) ? null : Section(icon: Icons.grid_view_rounded,
+          title: s.t('sec.groups'), hint: s.t('sec.groups_hint'), children: [
+            HScroll(height: 64, moreLabel: s.t('common.more_next'), children: [
+              for (final g in groups) _GroupCard(state: s, group: g, views: views, onTap: () => _openGroup(g)),
+              _NewGroupCard(label: s.t('groups.new'), onTap: () => _editGroup(null)),
+            ]),
+          ]),
+      'devices': () => Section(icon: Icons.home_outlined, title: s.t('sec.devices'), hint: s.t('sec.devices_hint'), children: [
+            if (loaded && views.isEmpty && error == null) EmptyCard(icon: Icons.qr_code_scanner_rounded, text: s.t('home.empty')),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.12,
+              children: [
+                for (final v in views)
+                  _DeviceCard(
+                    state: s, view: v, outputs: _outputs(v),
+                    open: () async {
+                      await Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => DeviceScreen(state: s, deviceId: v['device']['device_id'] as String)));
+                      _load();
+                    },
+                    toggle: (on) => _all(v, on),
+                  ),
+              ],
+            ),
+          ]),
+    };
     return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 52, 20, 130), children: [
+      onRefresh: () async {
+        await Future.wait([_load(), s.alerts.load()]);
+      },
+      child: Scrollbar(child: ListView(padding: const EdgeInsets.fromLTRB(20, 52, 20, 130), children: [
         Row(children: [
           Expanded(
             child: InkWell(
@@ -120,99 +233,84 @@ class _HomeScreenState extends State<HomeScreen> {
               ]),
             ),
           ),
-          CircleIconButton(icon: Icons.notifications_none_rounded, tooltip: s.t('nav.notifications'),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsScreen(state: s)))),
+          ListenableBuilder(
+            listenable: s.alerts,
+            builder: (context, _) => Badge(
+              isLabelVisible: s.alerts.unseen.isNotEmpty,
+              backgroundColor: alarmRed,
+              smallSize: 10,
+              child: CircleIconButton(icon: Icons.notifications_none_rounded, tooltip: s.t('nav.notifications'),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsScreen(state: s)))),
+            ),
+          ),
           const SizedBox(width: 10),
           Avatar(name: '${s.me?['display_name'] ?? ''}', onTap: widget.openMe),
         ]),
+        AlarmBar(state: s),                // a pulsing red bar while a PIR / magnet / smoke alert is open
         if (error != null) Padding(padding: const EdgeInsets.only(top: 16), child: Text(error!)),
-        if (summary != null)
-          Section(icon: Icons.bolt_rounded, title: s.t('sec.today'), hint: s.t('sec.today_hint'), children: [
-            Row(children: [
-              StatTile(label: s.t('home.temperature'),
-                  value: summary!['temperature'] == null ? '—' : '${s.i18n.num((summary!['temperature'] as num).toDouble())}°'),
+        ...[for (final (key, on) in s.homeLayout) if (on) blocks[key]!()].nonNulls,
+      ])),
+    );
+  }
+
+  /// The person's own section: what they picked, in their order (custom_edit.dart).
+  Widget _custom(AppState s, Tk tk) {
+    final items = s.customItems;
+    Future<void> edit() async {
+      await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => CustomEditScreen(state: s, views: views, scenes: scenes)));
+      if (mounted) setState(() {});
+    }
+    final tiles = <Widget>[];
+    final sensors = <Widget>[];
+    for (final x in items) {
+      if (x['type'] == 'scene') {
+        final sc = scenes.where((sc) => '${sc['scene_id']}' == '${x['scene_id']}').firstOrNull;
+        if (sc != null) {
+          tiles.add(ScenePill(icon: iconFor(sc['icon'] as String?), tone: tk.tone(sc['icon'] as String?),
+              label: '${sc['name']}', onTap: () => _runScene(sc)));
+        }
+        continue;
+      }
+      final v = views.where((v) => v['device']['device_id'] == x['device_id']).firstOrNull;
+      final t = (v?['tags'] as List?)?.cast<Map<String, dynamic>>().where((t) => t['key'] == x['key']).firstOrNull;
+      if (v == null || t == null) continue;
+      if (x['type'] == 'out') {
+        tiles.add(_FavChip(state: s, view: v, tag: t,
+            busy: _busy.contains('${v['device']['device_id']}/${t['key']}'),
+            onTap: () => _set(v['device']['device_id'] as String, t, t['value'] != true)));
+      } else {
+        final on = t['value'] == true;
+        final alarm = s.alerts.of(v['device']['device_id'] as String, t['key'] as String) != null;
+        sensors.add(Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: GlassCard(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: [
+              Icon(iconFor(outIcon(t)), size: 20, color: alarm ? alarmRed : on ? tk.ok : tk.muted),
               const SizedBox(width: 10),
-              StatTile(label: s.t('home.power_now'),
-                  value: summary!['power_kw'] == null ? '—' : s.i18n.num((summary!['power_kw'] as num).toDouble()),
-                  unit: 'kW'),
-              const SizedBox(width: 10),
-              StatTile(label: s.t('home.alerts'), value: s.i18n.num(summary!['alerts'] ?? 0),
-                  unit: s.t('home.active_alerts'), warn: ((summary!['alerts'] ?? 0) as num) > 0),
+              Expanded(child: Text('${s.i18n.name(t['display_name'])} · ${v['device']['name']}',
+                  style: TextStyle(fontSize: 13, color: tk.text))),
+              Text(alarm ? s.t('alarm.badge') : s.t(on ? 'sensor.active' : 'sensor.idle'),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                      color: alarm ? alarmRed : on ? tk.ok : tk.muted)),
             ]),
-          ]),
-        if (scenes.isNotEmpty || favs.isNotEmpty)
-          Section(icon: Icons.star_outline_rounded, title: s.t('sec.quick'), hint: s.t('sec.quick_hint'), children: [
-            if (scenes.isNotEmpty)
-              SizedBox(
-                height: 52,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: scenes.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (_, i) => ScenePill(
-                    icon: iconFor(scenes[i]['icon'] as String?),
-                    tone: tk.tone(scenes[i]['icon'] as String?),
-                    label: '${scenes[i]['name']}',
-                    onTap: () => _runScene(scenes[i]),
-                  ),
-                ),
-              ),
-            if (favs.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              RowLabel(s.t('home.favorites')),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 64,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: favs.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (_, i) => _FavChip(
-                    state: s, view: favs[i].$1, tag: favs[i].$2,
-                    busy: _busy.contains('${favs[i].$1['device']['device_id']}/${favs[i].$2['key']}'),
-                    onTap: () => _set(favs[i].$1['device']['device_id'] as String, favs[i].$2, favs[i].$2['value'] != true),
-                  ),
-                ),
-              ),
-            ],
-          ]),
-        if (groups.isNotEmpty)
-          Section(icon: Icons.grid_view_rounded, title: s.t('sec.groups'), hint: s.t('sec.groups_hint'), children: [
-            SizedBox(
-              height: 64,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: groups.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (_, i) => _GroupCard(state: s, group: groups[i], views: views,
-                    onTap: () => _openGroup(groups[i])),
-              ),
-            ),
-          ]),
-        Section(icon: Icons.home_outlined, title: s.t('sec.devices'), hint: s.t('sec.devices_hint'), children: [
-          if (views.isEmpty && error == null) GlassCard(child: Text(s.t('home.empty'))),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.12,
-            children: [
-              for (final v in views)
-                _DeviceCard(
-                  state: s, view: v, outputs: _outputs(v),
-                  open: () async {
-                    await Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => DeviceScreen(state: s, deviceId: v['device']['device_id'] as String)));
-                    _load();
-                  },
-                  toggle: (on) => _all(v, on),
-                ),
-            ],
           ),
-        ]),
-      ]),
+        ));
+      }
+    }
+    return Section(
+      icon: Icons.dashboard_customize_rounded,
+      title: s.customTitle.isEmpty ? s.t('custom.title_default') : s.customTitle,
+      hint: s.t('custom.hint'),
+      action: CircleIconButton(icon: Icons.edit_outlined, tooltip: s.t('custom.edit'), onTap: edit),
+      children: [
+        if (items.isEmpty)
+          EmptyCard(icon: Icons.add_rounded, text: s.t('custom.empty'), onTap: edit, dashed: true),
+        if (tiles.isNotEmpty) Wrap(spacing: 10, runSpacing: 10, children: tiles),
+        if (tiles.isNotEmpty && sensors.isNotEmpty) const SizedBox(height: 10),
+        ...sensors,
+      ],
     );
   }
 
@@ -226,6 +324,14 @@ class _HomeScreenState extends State<HomeScreen> {
     } on ApiError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+
+  Future<void> _editGroup(Map<String, dynamic>? g) async {
+    final org = _org;
+    if (org == null) return;
+    final changed = await Navigator.push<bool>(context, MaterialPageRoute(
+        builder: (_) => GroupEditScreen(state: widget.state, orgId: org, group: g)));
+    if (changed == true) _load();
   }
 
   /// A group: its outputs in one sheet, each with its switch.
@@ -246,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final t = v == null ? null : _outputs(v).where((x) => x['key'] == ref['key']).firstOrNull;
           if (v == null || t == null) continue;
           rows.add(ListTile(
-            leading: IconTile(icon: iconFor(t['ui']?['icon'] as String? ?? t['icon'] as String?), size: 38, radius: 13,
+            leading: IconTile(icon: iconFor(outIcon(t)), size: 38, radius: 13,
                 on: t['value'] == true),
             title: Text(s.i18n.name(t['display_name'])),
             subtitle: Text('${v['device']['name'] ?? ''}'),
@@ -255,8 +361,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ));
         }
         return SafeArea(child: ListView(shrinkWrap: true, children: [
-          Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('${g['name']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+          Padding(padding: const EdgeInsets.fromLTRB(20, 0, 8, 8), child: Row(children: [
+            Expanded(child: Text('${g['name']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+            IconButton(tooltip: s.t('groups.edit'), icon: const Icon(Icons.edit_rounded), onPressed: () {
+              Navigator.pop(c);
+              _editGroup(g);
+            }),
+          ])),
           ...rows,
         ]));
       }),
@@ -306,7 +417,7 @@ class _FavChip extends StatelessWidget {
           padding: const EdgeInsetsDirectional.fromSTEB(12, 10, 14, 10),
           onTap: offline || busy || tag['writable'] != true ? null : onTap,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            IconTile(icon: iconFor(tag['ui']?['icon'] as String? ?? tag['icon'] as String?), size: 38, radius: 13,
+            IconTile(icon: iconFor(outIcon(tag)), size: 38, radius: 13,
                 on: on, strong: true),
             const SizedBox(width: 10),
             Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -350,7 +461,7 @@ class _GroupCard extends StatelessWidget {
           const SizedBox(width: 10),
           Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${group['name']}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: tk.text)),
-            Text('${state.i18n.num(ids.length)} · ${state.t('home.online')} ${state.i18n.num(online)}',
+            Text(state.t('groups.count', {'n': state.i18n.num(ids.length), 'on': state.i18n.num(online)}),
                 style: TextStyle(fontSize: 11, color: tk.muted)),
           ]),
         ]),
@@ -359,7 +470,78 @@ class _GroupCard extends StatelessWidget {
   }
 }
 
-/// .dev: icon tile and the all-outputs switch on top, name and state below; lit when any is on.
+/// .group-card.add: the dashed card at the end of the groups row that makes a new group.
+class _NewGroupCard extends StatelessWidget {
+  const _NewGroupCard({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = Tk.of(context);
+    return CustomPaint(
+      foregroundPainter: _Dashes(color: tk.line2),
+      child: Material(
+        color: tk.surface,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 148, minHeight: 64),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 38, height: 38,
+                  decoration: BoxDecoration(color: tk.surface2, borderRadius: BorderRadius.circular(12)),
+                  child: Icon(Icons.add_rounded, size: 19, color: tk.muted)),
+              const SizedBox(width: 10),
+              Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: tk.text)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Dashes extends CustomPainter {
+  _Dashes({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final path = Path()..addRRect(RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(20)));
+    for (final m in path.computeMetrics()) {
+      for (var d = 0.0; d < m.length; d += 10) {
+        canvas.drawPath(m.extractPath(d, d + 5), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Dashes old) => old.color != color;
+}
+
+/// The protocol line of a device card (the web app's protoLabel): a native module's transports
+/// ("MQTT · HTTP"), else the protocol's name.
+String protoLabel(AppState s, Map<String, dynamic> d) {
+  const transport = {'mqtt': 'MQTT', 'http': 'HTTP', 'tcp': 'TCP/IP'};
+  final p = '${d['protocol'] ?? ''}';
+  if (p == 'native' || p.isEmpty) {
+    final tr = ((d['connection'] as Map?)?['transports'] as List?) ?? const ['mqtt', 'http', 'tcp'];
+    return tr.map((x) => transport[x] ?? '$x').take(2).join(' · ');
+  }
+  return s.i18n.has('proto.$p') ? s.t('proto.$p') : p;
+}
+
+/// .dev: icon tile and the all-outputs switch on top, name and state, then the protocol chip
+/// (and the access when it is not the owner's); lit when any output is on.
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({required this.state, required this.view, required this.outputs, required this.open,
       required this.toggle});
@@ -370,6 +552,25 @@ class _DeviceCard extends StatelessWidget {
   final VoidCallback open;
   final ValueChanged<bool> toggle;
 
+  /// The state line as the web app's card(): offline (since), "n of m on", on · reading, a reading.
+  String _state(Map<String, dynamic> d, bool online, int on) {
+    final s = state;
+    final reading = ((view['tags'] as List?) ?? const []).cast<Map<String, dynamic>>()
+        .where((t) => t['value'] is num && t['writable'] != true).firstOrNull;
+    String readingText(Map<String, dynamic> r) =>
+        '${s.i18n.num(r['value'])}${r['unit'] == '°C' ? '°' : ' ${r['unit'] ?? ''}'}';
+    if (!online) return s.t('device.offline');
+    if (outputs.length > 1) {
+      return on > 0 ? s.t('device.on_count', {'n': s.i18n.num(on), 'total': s.i18n.num(outputs.length)}) : s.t('device.all_off');
+    }
+    if (outputs.length == 1) {
+      final text = on > 0 ? s.t('device.on') : s.t('device.off');
+      return on > 0 && reading != null ? '$text · ${readingText(reading)}' : text;
+    }
+    if (reading != null) return '${s.i18n.num(reading['value'])} ${reading['unit'] ?? ''}'.trim();
+    return s.t('device.online');
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = state;
@@ -378,28 +579,35 @@ class _DeviceCard extends StatelessWidget {
     final on = outputs.where((t) => t['value'] == true).length;
     final online = d['state'] == 'online';
     final writable = outputs.any((t) => t['writable'] == true);
+    final lit = on > 0 && online;
+    Widget proto(String text, {bool ltr = false}) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(color: tk.surface2, borderRadius: BorderRadius.circular(8)),
+          child: Text(text, textDirection: ltr ? TextDirection.ltr : null,
+              style: TextStyle(fontSize: 10, letterSpacing: 0.3, color: tk.muted)),
+        );
     return Opacity(
       opacity: online ? 1 : 0.55,
       child: GlassCard(
-        lit: on > 0,
+        lit: lit,
         padding: const EdgeInsets.all(14),
         onTap: open,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            IconTile(icon: Icons.grid_view_rounded, on: on > 0),
+            IconTile(icon: Icons.grid_view_rounded, on: lit),
             const Spacer(),
-            if (outputs.isNotEmpty) TiSwitch(value: on > 0, onChanged: online && writable ? toggle : null),
+            if (outputs.isNotEmpty && online) TiSwitch(value: on > 0, onChanged: writable ? toggle : null),
           ]),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${d['name'] ?? d['identifier']}', maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: tk.text)),
             const SizedBox(height: 2),
-            Text(
-              online
-                  ? (outputs.isEmpty ? s.t('device.online') : s.t('device.on_count', {'n': on, 'total': outputs.length}))
-                  : s.t('device.offline'),
-              style: TextStyle(fontSize: 12, color: on > 0 && online ? tk.accent : tk.muted),
-            ),
+            Text(_state(d, online, on), maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: !online ? tk.warn : lit ? tk.accent : tk.muted)),
+          ]),
+          Wrap(spacing: 6, runSpacing: 4, children: [
+            proto(protoLabel(s, d), ltr: true),
+            if (d['access'] != null && d['access'] != 'owner') proto(s.t('access.${d['access']}')),
           ]),
         ]),
       ),

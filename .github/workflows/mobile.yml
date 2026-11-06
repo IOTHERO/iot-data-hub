@@ -35,8 +35,29 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      # Release signing from the repository secrets (Settings > Secrets > Actions):
+      # ANDROID_KEYSTORE_BASE64 (the .jks file, base64), ANDROID_KEYSTORE_PASSWORD,
+      # ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. Without them the APK is debug-signed.
+      - name: Release key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo "no release key: the APK is signed with the debug key"; exit 0; fi
+          echo "$KEYSTORE" | base64 -d > android/app/release.jks
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
       - name: Build the APK
         run: flutter build apk --release
+      - name: Forget the release key
+        if: always()
+        run: rm -f android/app/release.jks android/key.properties
       - uses: actions/upload-artifact@v4
         with:
           name: titiswitch-flutter-apk

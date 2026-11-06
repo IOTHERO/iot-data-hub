@@ -339,6 +339,8 @@ class AccountService:
                 raise NotFound(str(exc)) from None
             raise Conflict(str(exc), code=exc.code) from None
         await self.store.revoke_user_sessions(member.user_id)   # rights change now
+        if not [m for m in await self.accounts.members(org_id) if m.user_id == member.user_id]:
+            await self.store.home.set_member_phone(org_id, member.user_id, "", None)
         local = getattr(self, "local", None)
         if local is not None:                       # his phone's local keys stop working
             await local.rotate_org(org_id, "member_removed", principal.username)
