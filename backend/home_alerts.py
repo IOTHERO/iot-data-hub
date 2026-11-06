@@ -63,6 +63,7 @@ class HomeAlerts:
         self.guards: dict[str, tuple[str, str]] = {}
         self.modes: dict[str, dict[str, Any]] = {}          # home -> its security record
         self._sirens: dict[str, asyncio.Task[None]] = {}    # home -> the siren's switch-off
+        self._switching_on: dict[str, int] = {}   # home -> siren "on" commands not answered yet
         self._last: dict[str, bool] = {}
         self._task: asyncio.Task[None] | None = None
         self._jobs: set[asyncio.Task[Any]] = set()
@@ -245,7 +246,6 @@ class HomeAlerts:
         old = self._sirens.pop(org_id, None)
         if old is not None:
             old.cancel()
-        await self._siren(org_id, True)
 
         async def later() -> None:
             await asyncio.sleep(float(self.scenarios(org_id).get("siren_s", 180)))
@@ -253,7 +253,19 @@ class HomeAlerts:
                 self._sirens.pop(org_id, None)
             await self._siren(org_id, False)
 
-        self._sirens[org_id] = asyncio.create_task(later(), name=f"siren:{org_id}")
+        # sounding from now on, before the "on" command is answered: a "seen" that comes while
+        # the device is still confirming must find it and stop it
+        task = asyncio.create_task(later(), name=f"siren:{org_id}")
+        self._sirens[org_id] = task
+        self._switching_on[org_id] = self._switching_on.get(org_id, 0) + 1
+        try:
+            await self._siren(org_id, True)
+        finally:
+            left = self._switching_on.pop(org_id, 1) - 1
+            if left:
+                self._switching_on[org_id] = left
+        if org_id not in self._sirens and org_id not in self._switching_on:   # silenced meanwhile
+            await self._siren(org_id, False)
 
     async def silence(self, org_id: str) -> None:
         """Someone saw the alarm (or cleared it): the siren stops."""
@@ -261,6 +273,8 @@ class HomeAlerts:
         if task is None:
             return
         task.cancel()
+        if org_id in self._switching_on:          # sound() switches it off once "on" is answered
+            return
         await self._siren(org_id, False)
 
     async def _tell_contacts(self, org_id: str, text: str) -> None:
