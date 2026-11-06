@@ -60,6 +60,16 @@ jobs:
         if: runner.os == 'Windows'      # the lock is generated on Windows (the plant platform)
       - name: Configuration of the repository
         run: python -m hub.validate_config --config-dir config
+      # pgserver's initdb fails on the hosted Windows runner; the image ships PostgreSQL as a
+      # (disabled) service with the documented CI-only login postgres/root: use that one there
+      - name: PostgreSQL for the store tests (Windows runner)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name "postgresql*" | Select-Object -First 1
+          Set-Service -Name $svc.Name -StartupType Manual
+          Start-Service -Name $svc.Name
+          "HUB_TEST_DATABASE_URL=postgresql://postgres:root@localhost:5432/postgres" >> $env:GITHUB_ENV
       - name: Tests
         run: python -m pytest -q -p no:cacheprovider
 
