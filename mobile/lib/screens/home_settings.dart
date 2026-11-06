@@ -168,9 +168,9 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: Text(s.t('mobile.holiday_add')),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: date, textDirection: TextDirection.ltr, keyboardType: TextInputType.datetime,
-            decoration: InputDecoration(labelText: s.t('mobile.holiday_date'), hintText: '1405/07/13')),
-        TextField(controller: name, maxLength: 80, decoration: InputDecoration(labelText: s.t('contacts.name'))),
+        WebField(label: s.t('mobile.holiday_date'), child: TextField(controller: date, textDirection: TextDirection.ltr, keyboardType: TextInputType.datetime,
+            decoration: const InputDecoration(hintText: '1405/07/13'))),
+        WebField(label: s.t('contacts.name'), child: TextField(controller: name, maxLength: 80)),
       ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.t('common.cancel'))),
@@ -191,10 +191,10 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
     final tk = Tk.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: tk.text)),
-        if (help != null) Padding(padding: const EdgeInsets.only(top: 4, bottom: 8),
-            child: Text(help, style: TextStyle(fontSize: 12, height: 1.6, color: tk.muted))),
+      child: WebCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: tk.text)),
+        if (help != null) Padding(padding: const EdgeInsets.only(top: 6, bottom: 8),
+            child: Text(help, style: TextStyle(fontSize: 13, height: 1.8, color: tk.muted))),
         const SizedBox(height: 6),
         ...children,
       ])),
@@ -204,10 +204,10 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
   Widget _field(TextEditingController c, String label, {bool number = true, VoidCallback? tap}) => Expanded(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
-          child: TextField(controller: c, enabled: _owner, readOnly: tap != null, onTap: tap,
+          child: WebField(label: label, child: TextField(controller: c, enabled: _owner, readOnly: tap != null, onTap: tap,
               textDirection: TextDirection.ltr,
               keyboardType: number ? const TextInputType.numberWithOptions(decimal: true, signed: true) : null,
-              decoration: InputDecoration(labelText: label)),
+              decoration: const InputDecoration())),
         ),
       );
 
@@ -217,21 +217,19 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
     final tk = Tk.of(context);
     final title = _personal ? s.t('me.my_home') : '${widget.home['name'] ?? ''}';
     if (settings == null) {
-      return Scaffold(appBar: AppBar(title: Text(s.t('homeset.title'))),
-          body: Center(child: error == null ? const CircularProgressIndicator() : Text(error!)));
+      return WebPage(title: s.t('homeset.title'), sub: title, children: [
+        Center(child: error == null ? const CircularProgressIndicator() : Text(error!)),
+      ]);
     }
-    return Scaffold(
-      appBar: AppBar(title: Text(s.t('homeset.title')), bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(18), child: Text(title, style: TextStyle(color: tk.muted)))),
-      body: GlowPage(child: ListView(padding: const EdgeInsets.fromLTRB(20, 10, 20, 30), children: [
+    return WebPage(title: s.t('homeset.title'), sub: title, children: [Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _card(s.t('homeset.name'), [
           TextField(controller: _name, enabled: _owner && !_personal),
         ]),
         _card(s.t('homeset.place'), help: s.t('homeset.place_help'), [
           Row(children: [_field(_lat, s.t('homeset.lat')), _field(_lon, s.t('homeset.lon'))]),
           Row(children: [_field(_radius, s.t('homeset.radius'))]),
-          OutlinedButton.icon(onPressed: _owner ? _here : null, icon: const Icon(Icons.my_location_rounded),
-              label: Text(s.t('homeset.here'))),
+          const SizedBox(height: 8),
+          WebButton(s.t('homeset.here'), icon: Icons.home_outlined, onTap: _owner ? _here : null),
         ]),
         _card(s.t('homeset.tariff'), help: s.t('homeset.tariff_help'), [
           for (final x in tiers)
@@ -241,8 +239,8 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
               IconButton(icon: const Icon(Icons.delete_outline_rounded),
                   onPressed: _owner ? () => setState(() => tiers.remove(x)) : null),
             ]),
-          OutlinedButton.icon(onPressed: _owner ? () => setState(() => tiers.add(_Tier(null, null))) : null,
-              icon: const Icon(Icons.add_rounded), label: Text(s.t('homeset.add_tier'))),
+          WebButton(s.t('homeset.add_tier'), icon: Icons.add_rounded, block: true,
+              onTap: _owner ? () => setState(() => tiers.add(_Tier(null, null))) : null),
           Row(children: [
             _field(_peakFrom, s.t('homeset.peak_from'), number: false, tap: () => _time(_peakFrom)),
             _field(_peakTo, s.t('homeset.peak_to'), number: false, tap: () => _time(_peakTo)),
@@ -250,7 +248,7 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
           Row(children: [_field(_factor, s.t('homeset.factor')), _field(_tax, s.t('homeset.tax'))]),
           Row(children: [_field(_fixed, s.t('homeset.fixed'))]),
         ]),
-        FilledButton(onPressed: _owner ? _save : null, child: Text(s.t('common.save'))),
+        WebButton(s.t('common.save'), kind: BtnKind.primary, block: true, onTap: _owner ? _save : null),
         const SizedBox(height: 18),
         _card(s.t('auto.holidays'), [
           for (final h in holidays)
@@ -261,12 +259,10 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
               title: Text('${h['name']}'),
               trailing: Text(s.i18n.num(h['date']), textDirection: TextDirection.ltr),
             ),
-          OutlinedButton.icon(onPressed: _owner ? _addHoliday : null, icon: const Icon(Icons.add_rounded),
-              label: Text(s.t('mobile.holiday_add'))),
+          WebButton(s.t('mobile.holiday_add'), icon: Icons.add_rounded, block: true, onTap: _owner ? _addHoliday : null),
         ]),
         _connectionCard(),
-      ])),
-    );
+      ])]);
   }
 
   /// Kept on this phone: anyone of the home may choose it, not only the owner.
@@ -290,19 +286,19 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
           ]),
         ),
       const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
+      WebField(label: s.t('connect.order'), child: DropdownButtonFormField<String>(
         initialValue: way.order,
-        decoration: InputDecoration(labelText: s.t('connect.order')),
+        decoration: const InputDecoration(),
         isExpanded: true,
         items: [for (final o in Connection.orders) DropdownMenuItem(value: o, child: Text(s.t('connect.$o')))],
         onChanged: (v) => setState(() => way = Connection(order: v ?? 'auto', local: way.local)),
-      ),
+      )),
       const SizedBox(height: 10),
-      TextField(controller: _localHub, keyboardType: TextInputType.url, textDirection: TextDirection.ltr,
-          decoration: InputDecoration(labelText: s.t('connect.local'), hintText: s.t('connect.local_hint'))),
+      WebField(label: s.t('connect.local'), child: TextField(controller: _localHub, keyboardType: TextInputType.url, textDirection: TextDirection.ltr,
+          decoration: InputDecoration(hintText: s.t('connect.local_hint')))),
       const SizedBox(height: 10),
-      OutlinedButton(
-        onPressed: () async {
+      WebButton(s.t('common.save'), block: true,
+        onTap: () async {
           final url = _localHub.text.trim();
           if (!Connection.validLocal(url)) {
             _toast(s.t('connect.bad_url'));
@@ -312,7 +308,6 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
           await way.save(s.store, _org);
           _toast(s.t('common.saved'));
         },
-        child: Text(s.t('common.save')),
       ),
     ]);
   }

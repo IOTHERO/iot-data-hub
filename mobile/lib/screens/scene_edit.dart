@@ -104,7 +104,7 @@ class _SceneEditScreenState extends State<SceneEditScreen> {
         ],
       ),
       body: GlowPage(child: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
-        TextField(controller: _name, decoration: InputDecoration(labelText: s.t('auto.name'), hintText: s.t('auto.scene_name_hint'))),
+        WebField(label: s.t('auto.name'), child: TextField(controller: _name, decoration: InputDecoration(hintText: s.t('auto.scene_name_hint')))),
         const SizedBox(height: 16),
         Text(s.t('auto.icon'), style: TextStyle(fontWeight: FontWeight.w700, color: tk.text)),
         const SizedBox(height: 8),
@@ -177,13 +177,13 @@ class _SceneEditScreenState extends State<SceneEditScreen> {
         ),
         const SizedBox(height: 6),
         Row(children: [
-          Expanded(child: DropdownButtonFormField<String>(
+          Expanded(child: WebField(label: s.t('auto.output'), child: DropdownButtonFormField<String>(
             initialValue: _outs(x['device_id'] as String?).any((t) => t['key'] == x['tag']) ? x['tag'] as String : null,
-            decoration: InputDecoration(labelText: s.t('auto.output')),
+            decoration: const InputDecoration(),
             items: [for (final t in _outs(x['device_id'] as String?))
               DropdownMenuItem(value: t['key'] as String, child: Text(s.i18n.name(t['display_name'])))],
             onChanged: (v) => setState(() => x['tag'] = v),
-          )),
+          ))),
           TiSwitch(value: x['value'] == true, onChanged: (v) => setState(() => x['value'] = v)),
         ]),
       ]);

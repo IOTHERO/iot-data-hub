@@ -199,7 +199,7 @@ class _AutomationEditScreenState extends State<AutomationEditScreen> {
         ],
       ),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
-        TextField(controller: _name, decoration: InputDecoration(labelText: s.t('auto.name'))),
+        WebField(label: s.t('auto.name'), child: TextField(controller: _name)),
         const SizedBox(height: 22),
         Text(s.t('auto.if'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
@@ -253,16 +253,16 @@ class _AutomationEditScreenState extends State<AutomationEditScreen> {
           ),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: DropdownButtonFormField<String>(
+            Expanded(child: WebField(label: s.t('auto.op'), child: DropdownButtonFormField<String>(
               initialValue: op,
-              decoration: InputDecoration(labelText: s.t('auto.op')),
+              decoration: const InputDecoration(),
               items: [for (final o in ['gt', 'lt', 'eq', 'ne', 'ge', 'le'])
                 DropdownMenuItem(value: o, child: Text(s.t('op.$o')))],
               onChanged: (v) => setState(() => op = v ?? op),
-            )),
+            ))),
             const SizedBox(width: 10),
-            Expanded(child: TextField(controller: _threshold, textDirection: TextDirection.ltr,
-                decoration: InputDecoration(labelText: s.t('auto.threshold')))),
+            Expanded(child: WebField(label: s.t('auto.threshold'), child: TextField(controller: _threshold, textDirection: TextDirection.ltr,
+                decoration: const InputDecoration()))),
           ]),
         ],
         const SizedBox(height: 24),
@@ -284,13 +284,13 @@ class _AutomationEditScreenState extends State<AutomationEditScreen> {
               ),
               const SizedBox(height: 6),
               Row(children: [
-                Expanded(child: DropdownButtonFormField<String>(
+                Expanded(child: WebField(label: s.t('auto.output'), child: DropdownButtonFormField<String>(
                   initialValue: _tags(a.deviceId, outputs: true).any((t) => t['key'] == a.tag) ? a.tag : null,
-                  decoration: InputDecoration(labelText: s.t('auto.output')),
+                  decoration: const InputDecoration(),
                   items: [for (final t in _tags(a.deviceId, outputs: true))
                     DropdownMenuItem(value: t['key'] as String, child: Text(s.i18n.name(t['display_name'])))],
                   onChanged: (v) => setState(() => a.tag = v ?? a.tag),
-                )),
+                ))),
                 const SizedBox(width: 8),
                 TiSwitch(value: a.value, onChanged: (v) => setState(() => a.value = v)),
                 IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => setState(() => actions.remove(a))),

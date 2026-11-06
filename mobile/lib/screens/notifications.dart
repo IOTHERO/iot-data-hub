@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../ui/kit.dart';
+import 'alerts.dart';
 import 'device.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -43,39 +45,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     'automation_partial': Icons.warning_amber_rounded,
   };
 
+  static const _tone = {'offline': BadgeTone.warn, 'command_failed': BadgeTone.warn, 'command_expired': BadgeTone.warn,
+    'automation_failed': BadgeTone.warn, 'automation_partial': BadgeTone.wait};
+
   @override
   Widget build(BuildContext context) {
     final s = widget.state;
     final list = rows;
-    return Scaffold(
-      appBar: AppBar(title: Text(s.t('nav.notifications'))),
-      body: list == null
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(padding: const EdgeInsets.all(20), children: [
-                if (list.isEmpty) Text(s.t('note.none')),
-                for (final n in list)
-                  Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: ListTile(
-                      leading: Icon(_icons[n['kind']] ?? Icons.notifications_rounded),
-                      title: Text(s.t('note.${n['kind']}', {
-                        'device': n['device'] ?? '', 'automation': n['automation'] ?? '', 'tag': n['tag'] ?? ''})),
-                      subtitle: Text(_when(s, '${n['at']}')),
-                      onTap: n['device_id'] == null ? null : () => Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => DeviceScreen(state: s, deviceId: n['device_id'] as String))),
-                    ),
-                  ),
-              ]),
+    return WebPage(title: s.t('nav.notifications'), children: [
+      AlarmBar(state: s),                       // open alarms first, they need a person
+      if (list == null)
+        const Center(child: CircularProgressIndicator())
+      else if (list.isEmpty)
+        EmptyCard(icon: Icons.notifications_none_rounded, text: s.t('note.none'))
+      else
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final n in list) ...[
+            CmdRow(
+              icon: _icons[n['kind']] ?? Icons.notifications_none_rounded,
+              tone: _tone[n['kind']] ?? BadgeTone.wait,
+              text: s.t('note.${n['kind']}', {'device': n['device'] ?? '', 'automation': n['automation'] ?? '', 'tag': n['tag'] ?? ''}),
+              sub: s.i18n.when(n['at']),
+              onTap: n['device_id'] == null ? null : () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => DeviceScreen(state: s, deviceId: n['device_id'] as String))),
             ),
-    );
-  }
-
-  String _when(AppState s, String iso) {
-    final t = DateTime.tryParse(iso)?.toLocal();
-    if (t == null) return '';
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${s.i18n.num('${two(t.hour)}:${two(t.minute)}')} · ${s.i18n.date(t)}';
+            const SizedBox(height: 10),
+          ],
+        ]),
+    ]);
   }
 }

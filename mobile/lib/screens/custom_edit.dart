@@ -70,8 +70,8 @@ class _CustomEditScreenState extends State<CustomEditScreen> {
         ),
       ]),
       body: GlowPage(child: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
-        TextField(controller: _title, maxLength: 30,
-            decoration: InputDecoration(labelText: s.t('custom.title'), hintText: s.t('custom.title_default'))),
+        WebField(label: s.t('custom.title'), child: TextField(controller: _title, maxLength: 30,
+            decoration: InputDecoration(hintText: s.t('custom.title_default')))),
         const SizedBox(height: 8),
         RowLabel(s.t('custom.order')),
         Text(s.t('custom.order_help'), style: TextStyle(fontSize: 12, color: tk.muted)),

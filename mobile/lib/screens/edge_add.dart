@@ -139,46 +139,45 @@ class _EdgeAddScreenState extends State<EdgeAddScreen> {
                 ]))
               else
                 GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  DropdownButtonFormField<String>(
+                  WebField(label: s.t('edge.hub'), child: DropdownButtonFormField<String>(
                     initialValue: hub, isExpanded: true,
-                    decoration: InputDecoration(labelText: s.t('edge.hub')),
+                    decoration: const InputDecoration(),
                     items: [for (final d in list)
                       DropdownMenuItem(value: d['device_id'] as String, child: Text('${d['name']}'))],
                     onChanged: (v) => setState(() => hub = v),
-                  ),
+                  )),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  WebField(label: s.t('edge.product'), child: DropdownButtonFormField<String>(
                     initialValue: product, isExpanded: true,
-                    decoration: InputDecoration(labelText: s.t('edge.product')),
+                    decoration: const InputDecoration(),
                     items: [for (final p in catalog)
                       DropdownMenuItem(value: p['product_id'] as String, child: Text('${p['name']} · ${p['code']}',
                           overflow: TextOverflow.ellipsis))],
                     onChanged: (v) => setState(() => _pickProduct(v)),
-                  ),
+                  )),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  WebField(label: s.t('edge.protocol'), child: DropdownButtonFormField<String>(
                     key: ValueKey(product),
                     initialValue: protocol, isExpanded: true,
-                    decoration: InputDecoration(labelText: s.t('edge.protocol')),
+                    decoration: const InputDecoration(),
                     items: [for (final p in _protocols) DropdownMenuItem(value: p, child: Text(_label('proto', p)))],
                     onChanged: (v) => setState(() => _pickProtocol(v)),
-                  ),
+                  )),
                   const SizedBox(height: 12),
-                  TextField(controller: _name,
-                      decoration: InputDecoration(labelText: s.t('device.name'), hintText: s.t('edge.name_hint'))),
+                  WebField(label: s.t('device.name'), child: TextField(controller: _name,
+                      decoration: InputDecoration(hintText: s.t('edge.name_hint')))),
                   const SizedBox(height: 16),
                   RowLabel(s.t('edge.address')),
                   for (final f in _spec)
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
-                      child: TextField(
+                      child: WebField(label: _label('conn', f['name'] as String), child: TextField(
                         controller: fields[f['name']],
                         textDirection: TextDirection.ltr,
                         keyboardType: f['type'] == 'integer' || f['type'] == 'number'
                             ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-                        decoration: InputDecoration(labelText: _label('conn', f['name'] as String),
-                            hintText: f['default'] == null ? null : '${f['default']}'),
-                      ),
+                        decoration: InputDecoration(hintText: f['default'] == null ? null : '${f['default']}'),
+                      )),
                     ),
                   const SizedBox(height: 18),
                   FilledButton(onPressed: _busy || protocol == null ? null : _submit, child: Text(s.t('edge.add'))),

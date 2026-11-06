@@ -223,13 +223,13 @@ class _SecurityCardState extends State<SecurityCard> {
               ]),
             ],
           const SizedBox(height: 14),
-          DropdownButtonFormField<int>(
+          WebField(label: s.t('security.siren_time'), child: DropdownButtonFormField<int>(
             initialValue: const [60, 120, 180, 300, 600, 900].contains(seconds) ? seconds : 180,
-            decoration: InputDecoration(labelText: s.t('security.siren_time')),
+            decoration: const InputDecoration(),
             items: [for (final m in [1, 2, 3, 5, 10, 15])
               DropdownMenuItem(value: m * 60, child: Text(s.t('security.minutes', {'n': s.i18n.num(m)})))],
             onChanged: (v) => seconds = v ?? 180,
-          ),
+          )),
           const SizedBox(height: 16),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(s.t('common.save'))),
         ]));

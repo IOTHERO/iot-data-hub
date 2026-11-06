@@ -15,6 +15,7 @@ import '../ui/outputs.dart';
 import '../ui/widgets.dart';
 import 'alerts.dart';
 import 'custom_edit.dart';
+import 'group.dart';
 import 'device.dart';
 import 'group_edit.dart';
 import 'notifications.dart';
@@ -334,45 +335,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (changed == true) _load();
   }
 
-  /// A group: its outputs in one sheet, each with its switch.
+  /// A group: its own page, as the web app's #/group/{id}.
   Future<void> _openGroup(Map<String, dynamic> g) async {
-    final s = widget.state;
-    final refs = [
-      for (final sec in ((g['sections'] as List?) ?? const []).cast<Map>())
-        for (final o in ((sec['outputs'] as List?) ?? const []).cast<Map>()) o,
-    ];
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Tk.of(context).bg2,
-      showDragHandle: true,
-      builder: (c) => StatefulBuilder(builder: (c, set) {
-        final rows = <Widget>[];
-        for (final ref in refs) {
-          final v = views.where((x) => x['device']['device_id'] == ref['device_id']).firstOrNull;
-          final t = v == null ? null : _outputs(v).where((x) => x['key'] == ref['key']).firstOrNull;
-          if (v == null || t == null) continue;
-          rows.add(ListTile(
-            leading: IconTile(icon: iconFor(outIcon(t)), size: 38, radius: 13,
-                on: t['value'] == true),
-            title: Text(s.i18n.name(t['display_name'])),
-            subtitle: Text('${v['device']['name'] ?? ''}'),
-            trailing: TiSwitch(value: t['value'] == true, onChanged: t['writable'] == true
-                ? (on) async { await _set(v['device']['device_id'] as String, t, on); set(() {}); } : null),
-          ));
-        }
-        return SafeArea(child: ListView(shrinkWrap: true, children: [
-          Padding(padding: const EdgeInsets.fromLTRB(20, 0, 8, 8), child: Row(children: [
-            Expanded(child: Text('${g['name']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-            IconButton(tooltip: s.t('groups.edit'), icon: const Icon(Icons.edit_rounded), onPressed: () {
-              Navigator.pop(c);
-              _editGroup(g);
-            }),
-          ])),
-          ...rows,
-        ]));
-      }),
-    );
-    if (mounted) setState(() {});
+    final org = _org;
+    if (org == null) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (_) =>
+        GroupScreen(state: widget.state, orgId: org, groupId: (g['group_id'] as num).toInt())));
+    _load();
   }
 
   Future<void> _pickHome(BuildContext context) async {

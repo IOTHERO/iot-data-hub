@@ -432,11 +432,12 @@ class Reading extends StatelessWidget {
 /// .card: the surface with a thin line and 24 px corners (tight: 18 px, less padding; warn: the
 /// .warn-card colours).
 class WebCard extends StatelessWidget {
-  const WebCard({super.key, required this.child, this.tight = false, this.warn = false, this.onTap});
+  const WebCard({super.key, required this.child, this.tight = false, this.warn = false, this.alarm = false, this.onTap});
 
   final Widget child;
   final bool tight;
   final bool warn;
+  final bool alarm;                      // .alarm-item.live: the alarm red, soft
   final VoidCallback? onTap;
 
   @override
@@ -447,9 +448,10 @@ class WebCard extends StatelessWidget {
       width: double.infinity,
       padding: tight ? const EdgeInsets.symmetric(horizontal: 14, vertical: 12) : const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: warn ? tk.warn.withValues(alpha: 0.13) : tk.surface,
+        color: alarm ? const Color(0xFFFF4D5E).withValues(alpha: 0.12) : warn ? tk.warn.withValues(alpha: 0.13) : tk.surface,
         borderRadius: radius,
-        border: Border.all(color: warn ? tk.warn.withValues(alpha: 0.35) : tk.line),
+        border: Border.all(color: alarm ? const Color(0xFFFF4D5E).withValues(alpha: 0.45)
+            : warn ? tk.warn.withValues(alpha: 0.35) : tk.line),
       ),
       child: child,
     );
@@ -659,4 +661,40 @@ class WebField extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min,
       children: [Label(label), const SizedBox(height: 6), child]);
+}
+
+enum BadgeTone { ok, warn, wait }
+
+/// .cmd: a 16 px rounded row with a round 30 px badge (ok green, warn orange, wait violet), the
+/// line and a small muted line under it - the command history and the notifications.
+class CmdRow extends StatelessWidget {
+  const CmdRow({super.key, required this.icon, required this.tone, required this.text, this.sub, this.onTap});
+
+  final IconData icon;
+  final BadgeTone tone;
+  final String text;
+  final String? sub;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = Tk.of(context);
+    final c = switch (tone) { BadgeTone.ok => tk.ok, BadgeTone.warn => tk.warn, BadgeTone.wait => tk.violet };
+    final row = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: tk.surface, borderRadius: BorderRadius.circular(16)),
+      child: Row(children: [
+        Container(width: 30, height: 30, decoration: BoxDecoration(color: c.withValues(alpha: 0.14), shape: BoxShape.circle),
+            child: Icon(icon, size: 16, color: c)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(text, style: TextStyle(fontSize: 13, color: tk.text)),
+          if (sub != null) Text(sub!, style: TextStyle(fontSize: 11, color: tk.muted)),
+        ])),
+      ]),
+    );
+    if (onTap == null) return row;
+    return Material(type: MaterialType.transparency,
+        child: InkWell(borderRadius: BorderRadius.circular(16), onTap: onTap, child: row));
+  }
 }

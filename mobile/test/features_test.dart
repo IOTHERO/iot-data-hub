@@ -117,8 +117,8 @@ void main() {
       await settle(tester);
       expect(find.text('Edge hub'), findsWidgets);
       expect(find.text(s.t('conn.timeout')), findsNothing);       // only required fields, port, unit id
-      await tester.enterText(find.widgetWithText(TextField, s.t('conn.host')), '192.168.1.50');
-      await tester.enterText(find.widgetWithText(TextField, s.t('conn.port')), '1502');
+      await tester.enterText(field(s.t('conn.host')), '192.168.1.50');
+      await tester.enterText(field(s.t('conn.port')), '1502');
       await tester.tap(find.text(s.t('edge.add')));
       await settle(tester);
     }, () => hub.client);
@@ -155,8 +155,8 @@ void main() {
 
       await tester.tap(find.text(s.t('account.delete')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.widgetWithText(TextField, s.t('auth.password')), 'secret');
-      await tester.enterText(find.widgetWithText(TextField, s.t('account.type_delete')), 'DELETE');
+      await tester.enterText(field(s.t('auth.password')), 'secret');
+      await tester.enterText(field(s.t('account.type_delete')), 'DELETE');
       await tester.tap(find.widgetWithText(FilledButton, s.t('account.delete')));
       await settle(tester);
       s.live.stop();

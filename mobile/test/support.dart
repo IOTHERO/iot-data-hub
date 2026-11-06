@@ -2,12 +2,14 @@
 
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:titiswitch/core/app_state.dart';
+import 'package:titiswitch/ui/kit.dart';
 
 const org = 'o1';
 final views = [
@@ -75,3 +77,8 @@ Future<void> settle(WidgetTester tester) async {
     await tester.pump();
   }
 }
+
+/// The input under a .field label (WebField): the web app's forms put the label above the field.
+Finder field(String label) => find.descendant(
+    of: find.ancestor(of: find.text(label), matching: find.byType(WebField)).first,
+    matching: find.byType(TextField));

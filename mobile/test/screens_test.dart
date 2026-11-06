@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:titiswitch/screens/group_edit.dart';
 import 'package:titiswitch/screens/home_settings.dart';
 import 'package:titiswitch/ui/contacts.dart';
+import 'package:titiswitch/ui/kit.dart';
 import 'package:titiswitch/ui/theme.dart';
 
 import 'support.dart';
@@ -68,8 +69,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(theme: buildTheme(Brightness.dark),
           home: HomeSettingsScreen(state: state, home: const {'org_id': org, 'name': 'Villa', 'role_id': 'customer_member'})));
       await settle(tester);
-      final save = tester.widget<FilledButton>(find.widgetWithText(FilledButton, state.t('common.save')).first);
-      expect(save.onPressed, isNull);
+      final save = tester.widget<WebButton>(find.widgetWithText(WebButton, state.t('common.save')).first);
+      expect(save.onTap, isNull);
     }, () => hub.client);
   });
 

@@ -133,7 +133,7 @@ class _LevelEditScreenState extends State<LevelEditScreen> {
         ],
       ),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
-        TextField(controller: _name, decoration: InputDecoration(labelText: s.t('levels.name'), hintText: s.t('levels.name_hint'))),
+        WebField(label: s.t('levels.name'), child: TextField(controller: _name, decoration: InputDecoration(hintText: s.t('levels.name_hint')))),
         const SizedBox(height: 20),
         Text(s.t('levels.ticks'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         Card(child: Column(children: [

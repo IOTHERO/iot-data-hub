@@ -35,8 +35,8 @@ class MeScreen extends StatelessWidget {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(s.t('homes.new')),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: name, autofocus: true, maxLength: 80,
-            decoration: InputDecoration(labelText: s.t('homes.name'), hintText: s.t('homes.name_hint'))),
+        WebField(label: s.t('homes.name'), child: TextField(controller: name, autofocus: true, maxLength: 80,
+            decoration: InputDecoration(hintText: s.t('homes.name_hint')))),
         Text(s.t('homes.help'), style: TextStyle(fontSize: 12, color: Tk.of(c).muted)),
       ]),
       actions: [
@@ -65,11 +65,11 @@ class MeScreen extends StatelessWidget {
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Text(s.t('account.delete_help'), style: const TextStyle(height: 1.6)),
         const SizedBox(height: 10),
-        TextField(controller: password, obscureText: true, autofillHints: const [AutofillHints.password],
-            decoration: InputDecoration(labelText: s.t('auth.password'))),
+        WebField(label: s.t('auth.password'), child: TextField(controller: password, obscureText: true, autofillHints: const [AutofillHints.password],
+            decoration: const InputDecoration())),
         const SizedBox(height: 10),
-        TextField(controller: typed, textDirection: TextDirection.ltr,
-            decoration: InputDecoration(labelText: s.t('account.type_delete'), hintText: 'DELETE')),
+        WebField(label: s.t('account.type_delete'), child: TextField(controller: typed, textDirection: TextDirection.ltr,
+            decoration: const InputDecoration(hintText: 'DELETE'))),
       ])),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: Text(s.t('common.cancel'))),

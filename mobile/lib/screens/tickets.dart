@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../ui/kit.dart';
 
 class TicketsScreen extends StatefulWidget {
   const TicketsScreen({super.key, required this.state});
@@ -113,49 +114,51 @@ class _TicketScreenState extends State<TicketScreen> {
   @override
   Widget build(BuildContext context) {
     final s = widget.state;
+    final tk = Tk.of(context);
     final d = data;
-    final cs = Theme.of(context).colorScheme;
-    if (d == null) return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
+    if (d == null) {
+      return const WebPage(title: '', children: [Center(child: CircularProgressIndicator())]);
+    }
     final t = d['ticket'] as Map<String, dynamic>;
-    final closed = t['status'] == 'closed' || t['status'] == 'rejected';
-    return Scaffold(
-      appBar: AppBar(title: Text('${t['subject']}')),
-      body: Column(children: [
-        Expanded(child: ListView(padding: const EdgeInsets.all(16), children: [
-          for (final m in (d['messages'] as List).cast<Map<String, dynamic>>())
-            Align(
-              alignment: m['side'] == 'buyer' ? AlignmentDirectional.centerStart : AlignmentDirectional.centerEnd,
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 300),
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: m['side'] == 'buyer' ? cs.primary.withValues(alpha: 0.14) : cs.onSurface.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(m['side'] == 'buyer' ? s.t('tickets.you') : '${m['author_name']}',
-                      style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
-                  const SizedBox(height: 4),
-                  Text('${m['body']}'),
-                ]),
-              ),
-            ),
-        ])),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: closed
-                ? Text(s.t('tickets.closed'))
-                : Row(children: [
-                    Expanded(child: TextField(controller: _reply, minLines: 1, maxLines: 4,
-                        decoration: InputDecoration(hintText: s.t('tickets.reply_hint')))),
-                    const SizedBox(width: 8),
-                    IconButton.filled(onPressed: _busy ? null : _send, icon: const Icon(Icons.send_rounded)),
-                  ]),
-          ),
-        ),
+    final closed = t['status'] == 'closed';
+    const tone = {'answered': ChipTone.accent, 'in_progress': ChipTone.violet, 'approved': ChipTone.ok,
+      'rejected': ChipTone.warn};
+    return WebPage(title: '${t['subject']}', sub: '${t['product_name']} · ${t['identifier']}', children: [
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        WebChip(s.t('tickets.kind_${t['kind']}')),
+        WebChip(s.t('tickets.status_${t['status']}'), tone: tone[t['status']] ?? ChipTone.plain),
       ]),
-    );
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (final m in (d['messages'] as List).cast<Map<String, dynamic>>())
+          Align(           // .bubble: the buyer at the start, the maker at the end in the accent
+            alignment: m['side'] == 'maker' ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 320),
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: m['side'] == 'maker' ? tk.accentSoft : tk.surface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: m['side'] == 'maker' ? tk.accentLine : tk.line),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${m['side'] == 'maker' ? m['author_name'] : s.t('tickets.you')} · ${s.i18n.when(m['created_at'])}',
+                    style: TextStyle(fontSize: 11, color: tk.muted)),
+                const SizedBox(height: 4),
+                Text('${m['body']}', style: TextStyle(fontSize: 13, height: 1.8, color: tk.text)),
+              ]),
+            ),
+          ),
+      ]),
+      if (closed)
+        Text(s.t('tickets.closed'), style: TextStyle(fontSize: 13, color: tk.muted))
+      else
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          TextField(controller: _reply, minLines: 3, maxLines: 6,
+              decoration: InputDecoration(hintText: s.t('tickets.reply_hint'))),
+          const SizedBox(height: 12),
+          WebButton(s.t('tickets.send'), kind: BtnKind.primary, block: true, onTap: _busy ? null : _send),
+        ]),
+    ]);
   }
 }

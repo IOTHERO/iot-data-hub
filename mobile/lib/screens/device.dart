@@ -264,7 +264,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
               childAspectRatio: 0.82,
-              children: [for (final t in outputs) _OutputTile(state: s, tag: t, busy: _busy.contains(t['key']),
+              children: [for (final t in outputs) OutputTile(state: s, tag: t, busy: _busy.contains(t['key']),
                   editing: editing,
                   write: editing && operate ? (_) => _rename(t)
                       : t['writable'] == true ? (on) => _write(t['key'] as String, on) : null,
@@ -403,8 +403,8 @@ String _value(AppState s, Map<String, dynamic> t) {
 
 /// .out: a square tile, filled with the accent when on; a long press names it (outputs.dart).
 /// Two keys (.dual): separate on and off halves. Momentary: a push the hub releases.
-class _OutputTile extends StatelessWidget {
-  const _OutputTile({required this.state, required this.tag, required this.busy, this.write, this.push, this.rename,
+class OutputTile extends StatelessWidget {
+  const OutputTile({super.key, required this.state, required this.tag, required this.busy, this.write, this.push, this.rename,
       this.editing = false});
 
   final AppState state;

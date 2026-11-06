@@ -78,8 +78,8 @@ class _RemotesCardState extends State<RemotesCard> {
       builder: (c, set) => AlertDialog(
         title: Text(s.t(r == null ? 'rf.add_remote' : 'rf.edit_remote')),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          TextField(controller: name, maxLength: 40, autofocus: r == null,
-              decoration: InputDecoration(labelText: s.t('rf.remote_name'), hintText: s.t('rf.remote_hint'))),
+          WebField(label: s.t('rf.remote_name'), child: TextField(controller: name, maxLength: 40, autofocus: r == null,
+              decoration: InputDecoration(hintText: s.t('rf.remote_hint')))),
           const SizedBox(height: 6),
           RowLabel(s.t('rf.band')),
           const SizedBox(height: 6),
@@ -135,8 +135,8 @@ class _RemotesCardState extends State<RemotesCard> {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(s.t('rf.add_key')),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: name, autofocus: true, maxLength: 40,
-            decoration: InputDecoration(labelText: s.t('rf.key_name'), hintText: s.t('rf.key_hint'))),
+        WebField(label: s.t('rf.key_name'), child: TextField(controller: name, autofocus: true, maxLength: 40,
+            decoration: InputDecoration(hintText: s.t('rf.key_hint')))),
         Text(s.t('rf.add_key_help', {'band': r['band']}), style: TextStyle(fontSize: 12, color: Tk.of(c).muted)),
       ]),
       actions: [
@@ -209,7 +209,7 @@ class _RemotesCardState extends State<RemotesCard> {
         return AlertDialog(
           title: Text(s.t('rf.edit_key')),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            TextField(controller: name, maxLength: 40, decoration: InputDecoration(labelText: s.t('rf.key_name'))),
+            WebField(label: s.t('rf.key_name'), child: TextField(controller: name, maxLength: 40)),
             RowLabel(s.t('out.icon')),
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 6, children: [

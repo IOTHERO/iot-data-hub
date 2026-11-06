@@ -165,58 +165,31 @@ class _CommandLogState extends State<CommandLog> {
   Widget build(BuildContext context) {
     final s = widget.state;
     final tk = Tk.of(context);
-    if (rows.isEmpty) return GlassCard(child: Text(s.t('note.none'), style: TextStyle(color: tk.muted)));
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(children: [
-        for (final c in rows)
-          ListTile(
-            dense: true,
-            leading: _Badge(status: '${c['status']}'),
-            title: Text(() {
-              final key = '${c['tag_path']}'.split('.').last;
-              final name = widget.names[key] ?? key;
-              final v = c['value'];
-              return v is bool ? s.t(v ? 'device.turned_on' : 'device.turned_off', {'name': name}) : '$name: ${s.i18n.num(v)}';
-            }()),
-            subtitle: Text('${s.t('command.${c['status']}')} · ${_who(s, '${c['reason'] ?? ''}')} · '
-                '${_time(s, '${c['created_at']}')}', style: TextStyle(fontSize: 11, color: tk.muted)),
-          ),
-      ]),
-    );
+    if (rows.isEmpty) return const SizedBox.shrink();          // the web app shows nothing then
+    const badge = {'confirmed': (BadgeTone.ok, Icons.check_rounded), 'executed': (BadgeTone.ok, Icons.check_rounded),
+      'failed': (BadgeTone.warn, Icons.close_rounded), 'expired': (BadgeTone.warn, Icons.schedule_rounded)};
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(s.t('device.commands'),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: tk.text))),
+      for (final c in rows.take(5)) ...[
+        Builder(builder: (_) {
+          final key = '${c['tag_path']}'.split('.').last;
+          final name = widget.names[key] ?? key;
+          final v = c['value'];
+          final (tone, icon) = badge[c['status']] ?? (BadgeTone.wait, Icons.schedule_rounded);
+          return CmdRow(icon: icon, tone: tone,
+              text: v is bool ? s.t(v ? 'device.turned_on' : 'device.turned_off', {'name': name}) : '$name ← ${s.i18n.num(v)}',
+              sub: '${s.t('command.${c['status']}')} · ${_who(s, '${c['reason'] ?? ''}')} · ${s.i18n.when(c['created_at'])}');
+        }),
+        const SizedBox(height: 10),
+      ],
+    ]);
   }
 
-  String _who(AppState s, String reason) => reason.startsWith('automation:')
-      ? s.t('device.by_automation')
-      : reason.startsWith('scene:')
-          ? s.t('device.by_scene')
-          : s.t('device.by_app');
-
-  String _time(AppState s, String iso) {
-    final t = DateTime.tryParse(iso)?.toLocal();
-    if (t == null) return '';
-    String two(int v) => v.toString().padLeft(2, '0');
-    return s.i18n.num('${two(t.hour)}:${two(t.minute)}');
-  }
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final tk = Tk.of(context);
-    final (Color c, IconData i) = switch (status) {
-      'confirmed' || 'executed' => (tk.ok, Icons.check_rounded),
-      'failed' || 'expired' => (tk.warn, Icons.close_rounded),
-      _ => (tk.violet, Icons.schedule_rounded),
-    };
-    return Container(
-      width: 30, height: 30,
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.14), shape: BoxShape.circle),
-      child: Icon(i, size: 16, color: c),
-    );
+  String _who(AppState s, String reason) {
+    if (reason.isEmpty || reason == 'app') return s.t('device.by_app');
+    final m = RegExp(r'^(automation|scene):\d+\s*(.*)$').firstMatch(reason);
+    if (m != null) return s.t(m[1] == 'automation' ? 'device.by_automation' : 'device.by_scene', {'name': m[2] ?? ''});
+    return reason;
   }
 }

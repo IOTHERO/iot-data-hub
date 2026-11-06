@@ -129,7 +129,7 @@ class _GroupEditScreenState extends State<GroupEditScreen> {
         ],
       ),
       body: GlowPage(child: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
-        TextField(controller: _name, decoration: InputDecoration(labelText: s.t('groups.name'), hintText: s.t('groups.name_hint'))),
+        WebField(label: s.t('groups.name'), child: TextField(controller: _name, decoration: InputDecoration(hintText: s.t('groups.name_hint')))),
         const SizedBox(height: 12),
         _icons(icon, (i) => setState(() => icon = i)),
         const SizedBox(height: 20),
@@ -140,8 +140,8 @@ class _GroupEditScreenState extends State<GroupEditScreen> {
             padding: const EdgeInsets.only(bottom: 12),
             child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
-                Expanded(child: TextField(controller: sec.name,
-                    decoration: InputDecoration(labelText: s.t('groups.section_name'), hintText: s.t('groups.section_hint')))),
+                Expanded(child: WebField(label: s.t('groups.section_name'), child: TextField(controller: sec.name,
+                    decoration: InputDecoration(hintText: s.t('groups.section_hint'))))),
                 IconButton(icon: const Icon(Icons.close_rounded),
                     onPressed: sections.length == 1 ? null : () => setState(() => sections.remove(sec))),
               ]),

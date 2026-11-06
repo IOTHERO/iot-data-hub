@@ -154,23 +154,20 @@ class AlertsScreen extends StatelessWidget {
     final tk = Tk.of(context);
     s.alerts.load();
     return Scaffold(
-      appBar: AppBar(title: Text(s.t('alarm.title'))),
-      body: GlowPage(child: ListenableBuilder(
+      body: GlowPage(child: SafeArea(child: ListenableBuilder(
         listenable: s.alerts,
         builder: (context, _) {
           final list = s.alerts.list;
-          if (list.isEmpty) {
-            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.verified_user_rounded, size: 56, color: tk.ok),
-              const SizedBox(height: 12),
-              Text(s.t('alarm.none'), style: TextStyle(color: tk.muted)),
-            ]));
-          }
           return Column(children: [
+            Padding(padding: const EdgeInsets.fromLTRB(20, 12, 20, 0), child: TopBar(title: s.t('alarm.title'))),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Text(s.t('alarm.swipe_hint'), textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: tk.muted)),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+              child: Text(s.t('alarm.swipe_hint'), textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: tk.muted)),
             ),
+            if (list.isEmpty)
+              Padding(padding: const EdgeInsets.all(20),
+                  child: EmptyCard(icon: Icons.check_rounded, text: s.t('alarm.none'))),
+            if (list.isNotEmpty)
             Expanded(child: Scrollbar(child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
               itemCount: list.length,
@@ -188,12 +185,12 @@ class AlertsScreen extends StatelessWidget {
                     HapticFeedback.mediumImpact();
                     _do(context, () => s.alerts.clear(a['alert_id'] as int));
                   },
-                  child: GlassCard(
-                    lit: live,
+                  child: WebCard(           // .alarm-item: red while not seen
+                    alarm: live,
                     onTap: () => openAlarmSource(context, s, a),
                     child: Row(children: [
                       Container(
-                        width: 44, height: 44,
+                        width: 42, height: 42,
                         decoration: BoxDecoration(borderRadius: BorderRadius.circular(14),
                             color: live ? alarmRed : tk.surface2),
                         child: Icon(alarmIcon(a['kind'] as String?), color: live ? Colors.white : tk.muted),
@@ -208,15 +205,9 @@ class AlertsScreen extends StatelessWidget {
                               style: TextStyle(fontSize: 11, color: tk.faint)),
                       ])),
                       const SizedBox(width: 8),
-                      live
-                          ? FilledButton.icon(
-                              style: FilledButton.styleFrom(backgroundColor: alarmRed, foregroundColor: Colors.white,
-                                  minimumSize: const Size(0, 38), padding: const EdgeInsets.symmetric(horizontal: 12)),
-                              onPressed: () => _do(context, () => s.alerts.seen(a['alert_id'] as int)),
-                              icon: const Icon(Icons.check_rounded, size: 18),
-                              label: Text(s.t('alarm.mark_seen')),
-                            )
-                          : Chip(avatar: Icon(Icons.check_rounded, size: 16, color: tk.ok), label: Text(s.t('alarm.seen'))),
+                      WebChip(s.t(live ? 'alarm.mark_seen' : 'alarm.seen'), icon: Icons.check_rounded,
+                          tone: live ? ChipTone.danger : ChipTone.ok,
+                          onTap: live ? () => _do(context, () => s.alerts.seen(a['alert_id'] as int)) : null),
                     ]),
                   ),
                 );
@@ -225,25 +216,18 @@ class AlertsScreen extends StatelessWidget {
             SafeArea(
               top: false,
               minimum: const EdgeInsets.fromLTRB(20, 6, 20, 12),
-              child: Column(children: [
+              child: list.isEmpty ? const SizedBox.shrink() : Column(children: [      // .alarm-foot
                 if (s.alerts.unseen.isNotEmpty)
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                    onPressed: () => _do(context, s.alerts.seenAll),
-                    icon: const Icon(Icons.done_all_rounded), label: Text(s.t('alarm.seen_all')),
-                  ),
+                  WebButton(s.t('alarm.seen_all'), icon: Icons.check_rounded, block: true,
+                      onTap: () => _do(context, s.alerts.seenAll)),
                 const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), foregroundColor: alarmRed,
-                      side: BorderSide(color: alarmRed.withValues(alpha: 0.5))),
-                  onPressed: () => _do(context, s.alerts.clearAll),
-                  icon: const Icon(Icons.delete_sweep_rounded), label: Text(s.t('alarm.clear_all')),
-                ),
+                WebButton(s.t('alarm.clear_all'), icon: Icons.delete_outline_rounded, kind: BtnKind.danger, block: true,
+                    onTap: () => _do(context, s.alerts.clearAll)),
               ]),
             ),
           ]);
         },
-      )),
+      ))),
     );
   }
 
