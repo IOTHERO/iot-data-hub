@@ -3,6 +3,12 @@
 #                         browsers, phones and devices all trust the one deploy/ca/ca.crt
 #   an e-mail address  -> a free Let's Encrypt certificate (PUBLIC_HOST is a public domain, 80/443
 #                         reachable from the internet)
+{
+	# clients that connect by IP address send no server name (SNI): give them this site's
+	# certificate (DEFAULT_SNI = the first name given to setup.sh)
+	default_sni {$DEFAULT_SNI}
+}
+
 {$PUBLIC_HOST} {
 	tls {$CADDY_TLS}
 	encode gzip

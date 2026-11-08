@@ -102,6 +102,7 @@ services:
     depends_on: [hub]
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST}
+      DEFAULT_SNI: ${DEFAULT_SNI:-localhost}           # for clients that connect by IP
       CADDY_TLS: ${CADDY_TLS:-/certs/server.crt /certs/server.key}   # or an e-mail: Let's Encrypt
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

@@ -35,6 +35,7 @@ else
     [ -n "${mail:-}" ] && tls="$mail"
   fi
   sed -e "s|^PUBLIC_HOST=.*|PUBLIC_HOST=${public_host}|" \
+      -e "s|^DEFAULT_SNI=.*|DEFAULT_SNI=${first}|" \
       -e "s|^CADDY_TLS=.*|CADDY_TLS=${tls}|" \
       -e "s|^HUB_PUBLIC_URL=.*|HUB_PUBLIC_URL=https://${first}|" \
       -e "s|^DB_PASSWORD=.*|DB_PASSWORD=$(rand 32)|" \
