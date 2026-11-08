@@ -20,7 +20,11 @@ ALTER TABLE tags ADD COLUMN write_class text CHECK (write_class IN ('setpoint', 
 -- Why a sample is not good (QualityReason / REASON_CODES in hub/models.py):
 -- 1 comm_failure, 2 out_of_range, 3 stale, 4 config_error, 5 device_reported, 6 math_error,
 -- 7 input_bad, 8 manual. NULL = good, or no reason known.
-ALTER TABLE samples ADD COLUMN reason smallint CHECK (reason BETWEEN 1 AND 8);
+-- samples: no CHECK - with TimescaleDB it is a compressed hypertable, which refuses a new column
+-- with constraints; only the hub writes it, from REASON_CODES. (Corrected after the first run on
+-- TimescaleDB: no TimescaleDB database could ever pass this file; on plain PostgreSQL databases
+-- that applied it the CHECK stays, which changes nothing.)
+ALTER TABLE samples ADD COLUMN reason smallint;
 ALTER TABLE tag_latest ADD COLUMN reason smallint CHECK (reason BETWEEN 1 AND 8);
 -- when the hub received the value (ts is the source time when the device provides one)
 ALTER TABLE tag_latest ADD COLUMN received_at timestamptz;
