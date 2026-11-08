@@ -101,6 +101,8 @@ New-NetFirewallRule -DisplayName "TiTiSwitch web" -Direction Inbound -Protocol T
 New-NetFirewallRule -DisplayName "TiTiSwitch devices" -Direction Inbound -Protocol TCP -LocalPort 7000,8883 -Action Allow
 ```
 
+> **فقط یکی از این دو راه را به کار ببرید.** اگر mirrored روشن است، قانون‌های `portproxy` راه دوم را حتماً پاک کنید. وگرنه همان درگاه‌ها را می‌گیرند و Docker خطای `address already in use` می‌دهد (پاک کردن در بخش ۸).
+
 **راه دیگر: ماندن در NAT و فرستادن درگاه‌ها** (ویندوز ۱۰). IP داخلی WSL با هر بار روشن شدن عوض می‌شود، پس این دستورها باید پس از هر راه‌اندازی دوباره اجرا شوند (مثلاً با Task Scheduler). در PowerShell Administrator:
 
 ```powershell
@@ -342,6 +344,7 @@ usbipd attach --wsl --busid 2-3      # پس از هر بار وصل کردن USB
 
 | نشانه | علت محتمل و راه |
 |---|---|
+| `failed to bind host port ... address already in use` | قانون‌های `portproxy` روش NAT با حالت mirrored تداخل دارند. در PowerShell Administrator: `foreach ($p in 80,443,7000,8883) { netsh interface portproxy delete v4tov4 listenport=$p listenaddress=0.0.0.0 }`، بعد `docker compose up -d`. اگر برنامهٔ دیگری درگاه را گرفته باشد: `Get-NetTCPConnection -LocalPort 443 -State Listen` |
 | `Temporary failure in name resolution` هنگام ساخت | اینترنت ویندوز از راه proxy است و WSL به آن دسترسی ندارد (بخش ۲-۳) |
 | `Input/output error` و `command not found` برای دستورهای ساده | دیسک مجازی WSL هنگام نوشتن آسیب دیده. در PowerShell: `wsl --shutdown`، بعد دوباره Ubuntu را باز کنید (سیستم فایل خودش تعمیر می‌شود). اگر بعدش دانلود image با `failed to stat parent` شکست خورد، بخش ۸-۱ |
 | `setup.sh: bad interpreter` یا `^M` | فایل با پایان خط ویندوزی کپی شده؛ پروژه را داخل WSL با `git clone` بگیرید، یا `sed -i 's/\r$//' deploy/setup.sh` |
