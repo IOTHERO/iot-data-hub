@@ -286,7 +286,8 @@ Offline: no message for `stale_after_s` (or state offline) → device offline, e
 
 * **HTTP**: `Authorization: Bearer <device secret>`; `POST /ingest/v1/devices/{id}/telemetry`,
   `…/state`, `…/ack`, `GET …/commands` (waiting commands; the telemetry answer says how many).
-* **TCP** (`HUB_TCP_INGEST_PORT`; TLS with `HUB_TLS_CERT` / `HUB_TLS_KEY`, plain only with
+* **TCP** (`HUB_TCP_INGEST_PORT`; TLS with `HUB_TCP_TLS_CERT` / `HUB_TCP_TLS_KEY`, else
+  `HUB_TLS_CERT` / `HUB_TLS_KEY`, plain only with
   `HUB_TCP_INGEST_INSECURE=true`): newline-delimited JSON; first line
   `{"device_id": "…", "secret": "…"}` → `{"ok": true}`; then `{"type": "telemetry" | "state" |
   "ack", …}`; the hub pushes `{"type": "command", …}` at once. 64 KiB per line, 10 s to sign

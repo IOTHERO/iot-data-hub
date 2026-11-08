@@ -1,0 +1,10 @@
+# Files used inside Linux containers and WSL keep LF endings on every checkout (a CRLF breaks
+# shell scripts and some configuration parsers).
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+Caddyfile     text eol=lf
+*.hocon       text eol=lf
+*.sql         text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+.env.example  text eol=lf

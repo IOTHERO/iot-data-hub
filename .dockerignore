@@ -27,3 +27,9 @@ _skill_staging
 .claude
 scripts/windows/hub-api-service.exe
 scripts/windows/hub-api-service.xml
+
+# not part of the image
+mobile
+android
+deploy
+docs

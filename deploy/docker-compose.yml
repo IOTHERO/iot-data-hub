@@ -1,6 +1,14 @@
-# Central platform in the cloud: hub + PostgreSQL/TimescaleDB + EMQX (device MQTT) + Caddy
-# (HTTPS with automatic certificates). Secrets come from deploy/.env (never committed): copy
-# deploy/.env.example to deploy/.env and fill it in. docs/fa/platform/deploy-cloud.md
+# Production: hub + PostgreSQL/TimescaleDB + EMQX (device MQTT) + Caddy (HTTPS).
+# Works on a Linux server, in the cloud, and in WSL 2 on Windows. Guide: docs/fa/install-docker-wsl.md
+#
+#   cd deploy
+#   ./setup.sh hub.example.com            # once: .env with random secrets + device certificates
+#   docker compose up -d --build
+#   docker compose exec hub hub-admin create-admin --username admin
+#
+# Secrets live in deploy/.env (gitignored, made by setup.sh). Ports on the host:
+#   80, 443   web (dashboard /, customer app /app/, maker panel /maker/, API, device HTTP)
+#   8883      MQTT over TLS for devices          7000   TCP/TLS for devices
 name: iot-platform
 
 services:
@@ -10,18 +18,21 @@ services:
     environment:
       POSTGRES_DB: hub
       POSTGRES_USER: hub_app
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in deploy/.env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in deploy/.env (run ./setup.sh)}
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./db-init:/docker-entrypoint-initdb.d:ro     # creates the role hub_tenant once
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hub_app -d hub"]
       interval: 10s
+      timeout: 5s
       retries: 10
-    networks: [backend]                              # never published to the internet
+    shm_size: 256m
+    networks: [backend]                              # never published
 
   hub:
-    build: {context: .., dockerfile: deploy/Dockerfile}
+    build: {context: .., dockerfile: Dockerfile}
+    image: iot-data-hub:latest
     restart: unless-stopped
     depends_on:
       db: {condition: service_healthy}
@@ -30,51 +41,84 @@ services:
       HUB_DATABASE_URL: postgresql://hub_app:${DB_PASSWORD}@db:5432/hub
       HUB_PLATFORM_BROKER: platform
       HUB_TCP_INGEST_PORT: "7000"
-      HUB_TRUSTED_PROXIES: "172.30.0.0/24"            # Caddy on the edge network (below)
+      HUB_TCP_TLS_CERT: /app/certs/server.crt          # devices: TLS on 7000
+      HUB_TCP_TLS_KEY: /app/certs/server.key
+      HUB_TRUSTED_PROXIES: "172.30.0.0/24"             # Caddy on the edge network (below)
     volumes:
-      - ./config:/srv/hub/config                     # brokers.yaml (platform broker), YAML devices
-      - hub-spool:/srv/hub/spool
-      - ./certs:/srv/hub/certs:ro                    # TLS for the TCP device port
+      - ./config:/app/config                           # brokers.yaml, YAML field devices
+      - ./certs:/app/certs:ro
+      - hub-backups:/app/backups                       # nightly encrypted pg_dump
+      - hub-logs:/app/logs
+      - hub-pki:/app/pki
+      - hub-spool:/app/spool                           # store & forward survives restarts
+    # a USB-serial adapter for Modbus RTU (WSL: attach it with usbipd first), then uncomment:
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
     ports:
-      - "7000:7000"                                  # TCP/TLS for native devices
+      - "7000:7000"                                    # TCP/TLS for native devices
+    stop_grace_period: 30s
     networks: [backend, edge]
+
+  # writes the hub's own EMQX account (from .env) for EMQX's first start
+  emqx-init:
+    image: busybox:1.37
+    restart: "no"
+    env_file: .env
+    command: ["sh", "-c", "printf 'user_id,password,is_superuser\\n%s,%s,true\\n' \"$$HUB_PLATFORM_MQTT_USERNAME\" \"$$HUB_PLATFORM_MQTT_PASSWORD\" > /bootstrap/users.csv && chmod 644 /bootstrap/users.csv"]
+    volumes:
+      - emqx-bootstrap:/bootstrap
+    network_mode: none
 
   emqx:
     image: emqx/emqx:5.8.4
     restart: unless-stopped
+    depends_on:
+      emqx-init: {condition: service_completed_successfully}
+      hub: {condition: service_started}
     environment:
       EMQX_NODE__NAME: emqx@127.0.0.1
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?set EMQX_DASHBOARD_PASSWORD}
       HUB_BROKER_HOOK_TOKEN: ${HUB_BROKER_HOOK_TOKEN:?set HUB_BROKER_HOOK_TOKEN}
     volumes:
       - ./emqx/base.hocon:/opt/emqx/etc/base.hocon:ro
-      - emqx-data:/opt/emqx/data
       - ./certs:/opt/emqx/etc/certs:ro
+      - emqx-bootstrap:/opt/emqx/etc/bootstrap:ro
+      - emqx-data:/opt/emqx/data
     ports:
-      - "8883:8883"                                  # MQTT over TLS for devices (no plain 1883)
-    networks: [backend, edge]                        # hooks to the hub over backend
+      - "8883:8883"                                    # MQTT over TLS for devices
+      - "127.0.0.1:18083:18083"                        # EMQX dashboard: this machine only
+    networks: [backend, edge]
 
   caddy:
     image: caddy:2.8.4
     restart: unless-stopped
     depends_on: [hub]
     environment:
-      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST, e.g. hub.example.com}
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST}
+      CADDY_TLS: ${CADDY_TLS:-/certs/server.crt /certs/server.key}   # or an e-mail: Let's Encrypt
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
       - caddy-data:/data
+      - caddy-config:/config
     ports:
       - "80:80"
       - "443:443"
-    networks: [edge]
+    networks:
+      edge: {ipv4_address: 172.30.0.10}
 
 volumes:
   db-data: {}
+  hub-backups: {}
+  hub-logs: {}
+  hub-pki: {}
   hub-spool: {}
   emqx-data: {}
+  emqx-bootstrap: {}
   caddy-data: {}
+  caddy-config: {}
 
 networks:
-  backend: {internal: true}                          # db and broker hooks: no internet route
+  backend: {internal: true}                          # database and broker hooks: no route out
   edge:                                              # a fixed range: the hub trusts Caddy's
     ipam: {config: [{subnet: 172.30.0.0/24}]}        # X-Forwarded-For from it only

@@ -79,3 +79,7 @@ scripts/windows/hub-api-service.xml
 
 # Local full copies of the project (never commit: large, contains local databases)
 BackUp/
+
+# deploy/: secrets and certificates made by deploy/setup.sh on the server
+deploy/ca/
+deploy/certs/

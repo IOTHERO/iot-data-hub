@@ -83,7 +83,9 @@ scripts/windows/   install.ps1 (first install), build-bundle.ps1 (offline zip), 
 scripts/           check.py (= CI locally), lock.py (requirements.lock)
 .github/workflows/ ci.yml: lint + bandit + pip-audit, tests on Windows and Linux, load test,
                    bundle and Docker image on tags
-Dockerfile, docker-compose.yml  Linux deployment with PostgreSQL/TimescaleDB
+Dockerfile         the one image (hub + dashboards + device ports); docker-compose.yml: a single plant
+deploy/           production: docker-compose.yml (hub, TimescaleDB, EMQX, Caddy HTTPS), setup.sh
+                   (secrets + device CA); guide docs/fa/install-docker-wsl.md (also WSL 2)
 frontend/          Web dashboard served by hub-api at / (docs/frontend.md): plain ES modules,
                    no build step, no npm; js/views/ one file per page; i18n/fa.json + en.json
 android/           Customer app for Android: app/ in a WebView + LocalBridge (home Wi-Fi control);

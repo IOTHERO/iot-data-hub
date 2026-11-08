@@ -159,6 +159,10 @@ class Settings(BaseModel):
     tcp_ingest_host: str = "0.0.0.0"  # nosec B104 - devices connect from the network
     tcp_ingest_port: int | None = Field(default=None, ge=0, le=65535)   # None: off
     tcp_ingest_insecure: bool = False           # plain TCP without TLS (development only)
+    # the device TCP port's own certificate (HUB_TCP_TLS_CERT / KEY): behind a TLS reverse proxy
+    # the HTTP API stays plain while devices still get TLS; unset = HUB_TLS_CERT / KEY
+    tcp_tls_cert_file: Path | None = None
+    tcp_tls_key_file: Path | None = None
     # open connections at most (device TCP port / HTTP API): beyond, a new one is refused at
     # once instead of the hub running out of sockets. None = the platform's safe default:
     # 20000 / 10000 on Linux; on Windows select() watches 512 sockets for the whole hub.
@@ -355,6 +359,8 @@ class Settings(BaseModel):
             tcp_ingest_port=int(e["HUB_TCP_INGEST_PORT"]) if e.get("HUB_TCP_INGEST_PORT")
             else None,
             tcp_ingest_insecure=_bool(e.get("HUB_TCP_INGEST_INSECURE"), False),
+            tcp_tls_cert_file=Path(e["HUB_TCP_TLS_CERT"]) if e.get("HUB_TCP_TLS_CERT") else None,
+            tcp_tls_key_file=Path(e["HUB_TCP_TLS_KEY"]) if e.get("HUB_TCP_TLS_KEY") else None,
             tcp_ingest_max_connections=int(e["HUB_TCP_MAX_CONNECTIONS"])
             if e.get("HUB_TCP_MAX_CONNECTIONS") else None,
             http_max_connections=int(e["HUB_HTTP_MAX_CONNECTIONS"])

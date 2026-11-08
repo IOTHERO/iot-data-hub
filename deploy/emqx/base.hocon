@@ -1,6 +1,13 @@
-# EMQX for native devices: TLS only, every device signs in with its own credential and may use
-# its own topics only - both decided by the hub (backend/api/ingest.py broker hooks).
-listeners.tcp.default.enable = false
+# EMQX for native devices: devices only over TLS (8883, published on the host); every device signs
+# in with its own credential and may use its own topics only - both decided by the hub
+# (backend/api/ingest.py broker hooks).
+
+# 1883 without TLS for the hub itself, on the internal Docker networks only (docker-compose.yml
+# publishes 8883 alone, so this port is never reachable from the LAN or the internet)
+listeners.tcp.default {
+  enable = true
+  bind = "0.0.0.0:1883"
+}
 listeners.ssl.default {
   bind = "0.0.0.0:8883"
   ssl_options {
@@ -9,11 +16,20 @@ listeners.ssl.default {
     versions = ["tlsv1.3", "tlsv1.2"]
   }
 }
+listeners.ws.default.enable = false
+listeners.wss.default.enable = false
 
-# The hub's own account (HUB_PLATFORM_BROKER in brokers.yaml) is in the built-in database,
-# created once in the dashboard; devices are checked by the hub.
+# The hub's own account (HUB_PLATFORM_MQTT_USERNAME / PASSWORD in deploy/.env) is loaded into the
+# built-in database on the first start (written by the emqx-init service); devices are checked by
+# the hub over HTTP.
 authentication = [
-  {mechanism = password_based, backend = built_in_database, user_id_type = username},
+  {
+    mechanism = password_based
+    backend = built_in_database
+    user_id_type = username
+    bootstrap_file = "/opt/emqx/etc/bootstrap/users.csv"
+    bootstrap_type = plain
+  },
   {
     mechanism = password_based
     backend = http

@@ -49,13 +49,17 @@ class TcpIngest:
         if settings.tcp_ingest_port is None:
             return None
         context = None
-        if settings.tls:
+        # its own certificate when set (the API behind a TLS proxy stays plain), else the API's
+        cert = getattr(settings, "tcp_tls_cert_file", None) or settings.tls_cert_file
+        key = getattr(settings, "tcp_tls_key_file", None) or settings.tls_key_file
+        if cert is not None and key is not None:
             context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
             context.minimum_version = ssl.TLSVersion.TLSv1_2
-            context.load_cert_chain(settings.tls_cert_file, settings.tls_key_file)
+            context.load_cert_chain(cert, key)
         elif not settings.tcp_ingest_insecure:
-            raise RuntimeError("HUB_TCP_INGEST_PORT needs TLS (HUB_TLS_CERT / HUB_TLS_KEY), or "
-                               "HUB_TCP_INGEST_INSECURE=true for development")
+            raise RuntimeError("HUB_TCP_INGEST_PORT needs TLS (HUB_TCP_TLS_CERT / HUB_TCP_TLS_KEY "
+                               "or HUB_TLS_CERT / HUB_TLS_KEY), or HUB_TCP_INGEST_INSECURE=true "
+                               "for development")
         return cls(ingest, settings.tcp_ingest_host, settings.tcp_ingest_port, context,
                    settings.tcp_ingest_max_connections)
 
