@@ -31,7 +31,17 @@ services:
     networks: [backend]                              # never published
 
   hub:
-    build: {context: .., dockerfile: Dockerfile}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      # behind a proxy (e.g. v2rayN on Windows: WSL in mirrored mode, BUILD_PROXY in .env):
+      # the build reaches it on 127.0.0.1 through the host network; empty = direct
+      network: host
+      args:
+        HTTP_PROXY: ${BUILD_PROXY:-}
+        HTTPS_PROXY: ${BUILD_PROXY:-}
+        http_proxy: ${BUILD_PROXY:-}
+        https_proxy: ${BUILD_PROXY:-}
     image: iot-data-hub:latest
     restart: unless-stopped
     depends_on:

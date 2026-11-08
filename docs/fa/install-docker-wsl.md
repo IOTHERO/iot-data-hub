@@ -114,7 +114,24 @@ New-NetFirewallRule -DisplayName "TiTiSwitch" -Direction Inbound -Protocol TCP -
 
 IP ویندوز روی شبکهٔ محلی را با `ipconfig` پیدا کنید (مثلاً `192.168.1.20`). همین نشانی را در گام بعد به `setup.sh` می‌دهید. بهتر است در مودم برای این کامپیوتر IP ثابت (DHCP reservation) بگذارید.
 
-### ۲-۳. روشن ماندن پس از راه‌اندازی دوبارهٔ ویندوز
+### ۲-۳. اینترنت از راه proxy (مثلاً v2rayN)
+
+اگر ویندوز از راه یک proxy محلی (مثلاً v2rayN روی `127.0.0.1:10808`) به اینترنت می‌رود، WSL در حالت NAT به آن دسترسی ندارد. هنگام ساخت image، نصب بسته‌های Python با خطای `Temporary failure in name resolution` متوقف می‌شود. راه حل:
+
+1. حالت **mirrored** بخش ۲-۲ را روشن کنید. WSL خودش proxy ویندوز را می‌بیند و `127.0.0.1:10808` داخل WSL هم کار می‌کند.
+2. در `deploy/.env` بنویسید:
+   ```
+   BUILD_PROXY=http://127.0.0.1:10808
+   ```
+   ساخت image از این راه بسته‌ها را می‌گیرد. برنامهٔ در حال اجرا به آن نیازی ندارد.
+3. اگر دانلود image‌ها از Docker Hub هم کند یا بسته است، برای خود Docker هم proxy بگذارید:
+   ```bash
+   sudo mkdir -p /etc/systemd/system/docker.service.d
+   printf '[Service]\nEnvironment="HTTP_PROXY=http://127.0.0.1:10808" "HTTPS_PROXY=http://127.0.0.1:10808" "NO_PROXY=localhost,127.0.0.1"\n' | sudo tee /etc/systemd/system/docker.service.d/proxy.conf
+   sudo systemctl daemon-reload && sudo systemctl restart docker
+   ```
+
+### ۲-۴. روشن ماندن پس از راه‌اندازی دوبارهٔ ویندوز
 
 کانتینرها `restart: unless-stopped` دارند و با روشن شدن Docker خودشان بالا می‌آیند. فقط باید خود WSL پس از روشن شدن ویندوز اجرا شود:
 
@@ -325,10 +342,33 @@ usbipd attach --wsl --busid 2-3      # پس از هر بار وصل کردن USB
 
 | نشانه | علت محتمل و راه |
 |---|---|
+| `Temporary failure in name resolution` هنگام ساخت | اینترنت ویندوز از راه proxy است و WSL به آن دسترسی ندارد (بخش ۲-۳) |
+| `Input/output error` و `command not found` برای دستورهای ساده | دیسک مجازی WSL هنگام نوشتن آسیب دیده. در PowerShell: `wsl --shutdown`، بعد دوباره Ubuntu را باز کنید (سیستم فایل خودش تعمیر می‌شود). اگر بعدش دانلود image با `failed to stat parent` شکست خورد، بخش ۸-۱ |
 | `setup.sh: bad interpreter` یا `^M` | فایل با پایان خط ویندوزی کپی شده؛ پروژه را داخل WSL با `git clone` بگیرید، یا `sed -i 's/\r$//' deploy/setup.sh` |
 | `permission denied ... docker.sock` | `sudo usermod -aG docker $USER` و یک بار خروج و ورود دوباره به WSL |
 | سایت از کامپیوتر دیگر باز نمی‌شود | حالت mirrored یا portproxy و فایروال ویندوز (بخش ۲-۲)؛ `docker compose ps` |
 | مرورگر هشدار گواهی می‌دهد | `ca.crt` روی آن دستگاه نصب نشده (۳-۴)، یا نشانی با نام‌هایی که به `setup.sh` دادید یکی نیست |
 | دستگاه به 8883 یا 7000 وصل نمی‌شود | ساعت دستگاه درست نیست (TLS به ساعت نیاز دارد)، `ca.crt` در Firmware نیست، یا درگاه در فایروال بسته است؛ `docker compose logs emqx hub` |
 | hub بالا نمی‌آید | `docker compose logs hub`؛ معمولاً یک مقدار در `.env` یا خطا در YAML دستگاه‌ها: `docker compose run --rm hub python -m hub.validate_config --config-dir /app/config` |
-| پس از روشن شدن ویندوز چیزی بالا نیست | WSL اجرا نشده (۲-۳). در NAT، IP عوض شده و portproxy باید دوباره اجرا شود |
+| پس از روشن شدن ویندوز چیزی بالا نیست | WSL اجرا نشده (۲-۴). در NAT، IP عوض شده و portproxy باید دوباره اجرا شود |
+
+### ۸-۱. لایهٔ خراب image پس از خطای دیسک
+
+اگر `docker pull` یا `docker compose up` بگوید `failed to stat parent: stat /var/lib/containerd/.../snapshots/<n>/fs: no such file or directory`، یکی از لایه‌های دانلودشده با خطای دیسک از بین رفته است. لایه‌ای که به آن پوشه اشاره می‌کند را پاک کنید. Docker همان لایه را دوباره دانلود می‌کند:
+
+```bash
+sudo ctr -n moby snapshots ls | grep -v Committed      # لایهٔ نیمه‌کاره و پدرش (ستون PARENT)
+sudo ctr -n moby snapshots rm sha256:<شناسهٔ پدر>
+docker compose up -d --build
+```
+
+اگر چند لایه خراب بود، راه سریع‌تر این است. همهٔ image‌ها دوباره دانلود می‌شوند؛ تا وقتی سامانه هنوز داده‌ای ندارد بی‌خطر است:
+
+```bash
+sudo systemctl stop docker containerd
+sudo rm -rf /var/lib/docker /var/lib/containerd
+sudo systemctl start containerd docker
+```
+
+برای کم کردن احتمال تکرار، دیسک WSL را به درایوی با جای بیشتر ببرید (در PowerShell): `wsl --shutdown` و بعد `wsl --manage Ubuntu --move D:\WSL\Ubuntu`.
+
