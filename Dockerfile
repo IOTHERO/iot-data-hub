@@ -23,6 +23,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+# a proxy for pip only (deploy/.env BUILD_PROXY), during the build; not kept in the image
+ARG PIP_PROXY=""
 # dependencies first (a cached layer): exactly the locked, audited versions
 COPY requirements.lock ./
 RUN pip install -r requirements.lock
