@@ -19,8 +19,9 @@ listeners.ssl.default {
 listeners.ws.default.enable = false
 listeners.wss.default.enable = false
 
-# The hook token is an environment substitution: unquoted on purpose (inside quotes HOCON keeps
-# "${...}" as text and EMQX would send it literally - every device would be refused).
+# A template: emqx-init (docker-compose.yml) writes the real file with __HUB_BROKER_HOOK_TOKEN__
+# replaced by HUB_BROKER_HOOK_TOKEN from deploy/.env (EMQX's own ${VAR} only reads EMQX_* variables,
+# and a quoted ${VAR} would be sent literally - every device would be refused).
 # The hub's own account (HUB_PLATFORM_MQTT_USERNAME / PASSWORD in deploy/.env) is loaded into the
 # built-in database on the first start (written by the emqx-init service); devices are checked by
 # the hub over HTTP.
@@ -37,7 +38,7 @@ authentication = [
     backend = http
     method = post
     url = "http://hub:8000/ingest/v1/broker/auth"
-    headers {"content-type" = "application/json", "X-Hub-Hook-Token" = ${HUB_BROKER_HOOK_TOKEN}}
+    headers {"content-type" = "application/json", "X-Hub-Hook-Token" = "__HUB_BROKER_HOOK_TOKEN__"}
     body {username = "${username}", password = "${password}", clientid = "${clientid}"}
   }
 ]
@@ -51,7 +52,7 @@ authorization {
       type = http
       method = post
       url = "http://hub:8000/ingest/v1/broker/acl"
-      headers {"content-type" = "application/json", "X-Hub-Hook-Token" = ${HUB_BROKER_HOOK_TOKEN}}
+      headers {"content-type" = "application/json", "X-Hub-Hook-Token" = "__HUB_BROKER_HOOK_TOKEN__"}
       body {username = "${username}", topic = "${topic}", action = "${action}"}
     }
   ]

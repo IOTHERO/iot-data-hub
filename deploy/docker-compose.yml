@@ -66,13 +66,22 @@ services:
     stop_grace_period: 30s
     networks: [backend, edge]
 
-  # writes the hub's own EMQX account (from .env) for EMQX's first start
+  # before EMQX starts: its configuration with the hook token, and the hub's own account (both
+  # from deploy/.env); runs on every start, so a changed token in .env takes effect
   emqx-init:
     image: busybox:1.37
     restart: "no"
     env_file: .env
-    command: ["sh", "-c", "printf 'user_id,password,is_superuser\\n%s,%s,true\\n' \"$$HUB_PLATFORM_MQTT_USERNAME\" \"$$HUB_PLATFORM_MQTT_PASSWORD\" > /bootstrap/users.csv && chmod 644 /bootstrap/users.csv"]
+    command:
+      - sh
+      - -c
+      - >-
+        case "$$HUB_BROKER_HOOK_TOKEN" in *[!A-Za-z0-9]*|"") echo "HUB_BROKER_HOOK_TOKEN: letters and digits only" >&2; exit 1;; esac;
+        sed "s/__HUB_BROKER_HOOK_TOKEN__/$$HUB_BROKER_HOOK_TOKEN/g" /template/base.hocon > /bootstrap/base.hocon &&
+        printf 'user_id,password,is_superuser\n%s,%s,true\n' "$$HUB_PLATFORM_MQTT_USERNAME" "$$HUB_PLATFORM_MQTT_PASSWORD" > /bootstrap/users.csv &&
+        chmod 644 /bootstrap/base.hocon /bootstrap/users.csv
     volumes:
+      - ./emqx/base.hocon:/template/base.hocon:ro
       - emqx-bootstrap:/bootstrap
     network_mode: none
 
@@ -85,9 +94,12 @@ services:
     environment:
       EMQX_NODE__NAME: emqx@127.0.0.1
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?set EMQX_DASHBOARD_PASSWORD}
-      HUB_BROKER_HOOK_TOKEN: ${HUB_BROKER_HOOK_TOKEN:?set HUB_BROKER_HOOK_TOKEN}
     volumes:
-      - ./emqx/base.hocon:/opt/emqx/etc/base.hocon:ro
+      - type: volume                                   # the file emqx-init wrote (with the token)
+        source: emqx-bootstrap
+        target: /opt/emqx/etc/base.hocon
+        read_only: true
+        volume: {subpath: base.hocon}
       - ./certs:/opt/emqx/etc/certs:ro
       - emqx-bootstrap:/opt/emqx/etc/bootstrap:ro
       - emqx-data:/opt/emqx/data
