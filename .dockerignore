@@ -33,3 +33,5 @@ mobile
 android
 deploy
 docs
+.wsl
+.preview*

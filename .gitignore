@@ -83,3 +83,6 @@ BackUp/
 # deploy/: secrets and certificates made by deploy/setup.sh on the server
 deploy/ca/
 deploy/certs/
+
+# the WSL disk (Ubuntu + Docker + the production database), moved here with wsl --manage --move
+.wsl/
