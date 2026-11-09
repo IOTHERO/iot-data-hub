@@ -250,10 +250,10 @@ docker compose exec hub hub-admin create-admin --username admin
 1. پنل سازنده ← برچسب‌ها یا تولید ← خروجی CSV **با رمزها**.
 2. روی یک کامپیوتر ویندوزی که برد با USB به آن وصل است:
    ```bash
-   hub-provision --csv codes.csv --port COM5 --server https://192.168.1.20 --repeat
+   hub-provision --csv codes.csv --port COM5 --broker 192.168.1.173:8883 --api https://192.168.1.173 --repeat
    ```
-   شناسه و رمز هر برد در حافظهٔ امن آن نوشته می‌شود. جزئیات در `docs/fa/platform/firmware-checklist.md`.
-3. Firmware باید `deploy/ca/ca.crt` را داشته باشد تا به گواهی سرور اعتماد کند.
+   شناسه و رمز هر برد از راه کنسول سریال خود برد، در حافظهٔ امن آن نوشته می‌شود. جزئیات در `docs/fa/platform/firmware-checklist.md`.
+3. برد باید `deploy/ca/ca.crt` را داشته باشد تا به گواهی سرور اعتماد کند. آن را در پورتال راه‌اندازی برد وارد کنید.
 
 **یکی از سه راه اتصال دستگاه:**
 
@@ -302,7 +302,7 @@ usbipd attach --wsl --busid 2-3      # پس از هر بار وصل کردن USB
 `hub-provision` به درگاه COM ویندوز نیاز دارد، پس آن را **روی خود ویندوز** اجرا کنید، نه داخل Docker. همان محیط Python پروژه کافی است:
 
 ```powershell
-.venv\Scripts\python.exe -m hub.provision --csv codes.csv --port COM5 --repeat
+.venv\Scripts\python.exe -m hub.provision --csv codes.csv --port COM5 --broker 192.168.1.173:8883 --api https://192.168.1.173 --repeat
 ```
 
 ---

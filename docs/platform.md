@@ -199,17 +199,20 @@ Code: `backend/claims.py` (rules), `hub/storage/claims.py`, `db/migrations/0011_
   issuing again replaces the earlier codes. The CSV is the only place codes and secrets ever
   appear (`Cache-Control: no-store`; not in logs or the audit).
 * **Production line: `hub-provision`** (`hub/provision.py`) writes `device_id` and
-  `device_secret` from that CSV into each board over its USB serial port
-  (`hub-provision --csv codes.csv --port COM5 [--server URL] [--repeat]`). Firmware contract, one
-  JSON object per line at 115200 8N1: `{"cmd":"hello"}` → `{"ok", "serial", "provisioned",
-  "firmware"}`; `{"cmd":"provision", device_id, secret, identifier, server?}` → the board keeps
-  them in protected storage (encrypted NVS) and answers `{"ok": true, "check": hex}` with the
-  first 16 hex characters of HMAC-SHA256(secret, device_id) - the secret never comes back. A
-  board that reports its serial gets its own row; otherwise the next unused row. Already
-  provisioned boards are refused (factory-reset first), a row is never written twice
-  (`<csv>.provisioned.csv` lists the done ones, without secrets), a wrong proof is not logged.
-  Issue credentials once per batch: a new export replaces the secrets of boards already flashed.
-  Simulator: `simulators/factory_board.py` (pyserial `socket://`); tests `tests/hub/test_provision.py`.
+  `device_secret` from that CSV into each board over its USB serial port, through the board's own
+  serial console (the TiTiRelay8 firmware's `console.cpp`; the same commands as that
+  repository's `tools/program_units.py`):
+  `hub-provision --csv codes.csv --port COM5 --broker <host>:8883 --api https://<host>
+  [--mode wifi] [--repeat]`. Console at 115200 8N1, one command per line, answers start with
+  `> `: `show`, `id <device_id>`, `secret <secret>`, `server <host> <port> tls`, `api <url>`,
+  `mode wifi|rs485`, `save`, `qr <link>`, `serial <sn>`; a refusal starts with `refused`,
+  `unknown` or `storage`. A board whose `show` already has a device id is refused (`factory yes`
+  first); after `save` it must show the new device id with `secret set`, or nothing is logged; a
+  row is never written twice (`<csv>.provisioned.csv` lists the done ones with the board's MAC
+  from its boot banner, never a secret). Issue credentials once per batch: a new export replaces
+  the secrets of boards already flashed. A private device CA (`deploy/ca/ca.crt`) is set in the
+  board's set-up portal. Simulator: `simulators/factory_board.py` (pyserial `socket://`); tests
+  `tests/hub/test_provision.py`.
 * Claim code: 12 characters Crockford base32 (60 random bits) printed `XXXX-XXXX-XXXX`; typed
   loosely (case, spaces, O/I/L) it still matches. Stored as HMAC-SHA256 keyed with
   `HUB_DATA_KEY` (or the JWT secret when that is unset: then changing the JWT secret makes

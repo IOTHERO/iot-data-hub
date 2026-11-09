@@ -1,11 +1,11 @@
-"""A fresh board on the production line, for ``hub-provision`` (hub/provision.py).
+"""A fresh TiTiRelay8 board on the production line, for ``hub-provision`` (hub/provision.py).
 
-It speaks the provisioning contract - one JSON object per line - on a TCP port, which pyserial
-reaches as ``socket://127.0.0.1:<port>``, the way a real board answers on its USB serial port. It
-prints a boot line first, like firmware does, keeps what it was given, and proves it holds the
-secret with HMAC-SHA256(secret, device_id)[:16].
+It speaks the board's serial console (the TiTiRelay8 firmware's console.cpp) on a TCP port,
+which pyserial reaches as ``socket://127.0.0.1:<port>``, the way the real board answers on its
+USB serial port: a boot banner with the MAC, one command per line, answers starting with "> ",
+edits kept in a draft until ``save``.
 
-    python -m simulators.factory_board --port 7700 [--serial SN-0001]
+    python -m simulators.factory_board --port 7700 [--mac 24:6F:28:AA:BB:CC]
 """
 
 from __future__ import annotations
@@ -13,68 +13,111 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import hashlib
-import hmac
-import json
 import logging
-from typing import Any
+from dataclasses import dataclass, field
 
 log = logging.getLogger("simulators.factory_board")
 
 
+@dataclass
+class _Settings:
+    device_id: str = ""
+    secret: str = ""
+    host: str = ""
+    port: int = 0
+    tls: bool = False
+    api: str = ""
+    mode: str = "unset"
+
+
+@dataclass
 class FactoryBoard:
-    def __init__(
-        self, serial: str | None = None, firmware: str = "1.0.0", *, lie: bool = False
-    ) -> None:
-        self.serial = serial
-        self.firmware = firmware
-        self.lie = lie  # a broken board: stores a wrong secret
-        self.identity: dict[str, Any] | None = None
-        self.port = 0
+    mac: str = "24:6F:28:AA:BB:CC"
+    firmware: str = "1.4.2"
+    broken_storage: bool = False        # a faulty board: save fails
+    saved: _Settings = field(default_factory=_Settings)
+    draft: _Settings | None = None
+    qr: str = ""
+    serial: str = ""
+    port: int = 0
 
-    def answer(self, message: dict[str, Any]) -> dict[str, Any]:
-        cmd = message.get("cmd")
-        if cmd == "hello":
-            return {
-                "ok": True,
-                "serial": self.serial,
-                "provisioned": self.identity is not None,
-                "firmware": self.firmware,
-            }
-        if cmd == "provision":
-            if self.identity is not None:
-                return {"ok": False, "error": "already provisioned"}
-            device_id, secret = str(message.get("device_id", "")), str(message.get("secret", ""))
-            if not device_id or len(secret) < 16:
-                return {"ok": False, "error": "device_id and secret are required"}
-            if self.lie:
-                secret = secret[::-1]
-            self.identity = {
-                "device_id": device_id,
-                "secret": secret,
-                "identifier": message.get("identifier"),
-                "server": message.get("server"),
-            }
-            check = hmac.new(secret.encode(), device_id.encode(), hashlib.sha256).hexdigest()[:16]
-            return {"ok": True, "check": check}
-        if cmd == "factory_reset":
-            self.identity = None
-            return {"ok": True}
-        return {"ok": False, "error": f"unknown command {cmd!r}"}
+    def _d(self) -> _Settings:
+        if self.draft is None:
+            self.draft = _Settings(**vars(self.saved))
+        return self.draft
 
-    async def serve(
-        self, host: str = "127.0.0.1", port: int = 0, ready: asyncio.Event | None = None
-    ) -> None:
+    def _show(self) -> list[str]:
+        s = self.draft or self.saved
+        out = [f"model TiTiRelay8 fw {self.firmware}{'  (unsaved changes)' if self.draft else ''}",
+               f'mode {s.mode}  device id "{s.device_id}"  api "{s.api}"']
+        if s.host:
+            out.append(f'server 1: platform {s.host}:{s.port}{" tls" if s.tls else ""} '
+                       f'user "{s.device_id}" secret {"set" if s.secret else "empty"}')
+        out.append(f'label: serial "{self.serial}", qr {"stored" if self.qr else "empty"}')
+        return out
+
+    def run(self, line: str) -> list[str]:
+        cmd, _, arg = line.strip().partition(" ")
+        arg = arg.strip()
+        if cmd == "show":
+            return self._show()
+        if cmd == "id" and arg:
+            self._d().device_id = arg
+            return ["device id set (also the server username)"]
+        if cmd == "secret" and arg:
+            self._d().secret = arg
+            return ["secret set"]
+        if cmd == "server" and arg:
+            parts = arg.split()
+            d = self._d()
+            d.host = parts[0]
+            port = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+            d.tls = (len(parts) > 2 and parts[2] == "tls") or port == 8883
+            d.port = port or (8883 if d.tls else 1883)
+            return ["platform server set"]
+        if cmd == "api":
+            self._d().api = arg
+            return ["hub address set"]
+        if cmd == "mode":
+            if arg not in ("wifi", "rs485"):
+                return ["mode wifi | mode rs485"]
+            self._d().mode = arg
+            return ["mode set"]
+        if cmd == "save":
+            if self.draft is None:
+                return ["nothing to save"]
+            if self.broken_storage:
+                return ["storage error"]
+            if not self.draft.device_id or not self.draft.secret or not self.draft.host:
+                return ["refused: device id, secret and server are required"]
+            self.saved, self.draft = self.draft, None
+            return ["saved; restart to use"]
+        if cmd == "qr":
+            if not arg.startswith(("http://", "https://")) or len(arg) > 200:
+                return ["refused: an http(s) link up to 200 characters"]
+            self.qr = arg
+            return ["label QR stored"]
+        if cmd == "serial":
+            if len(arg) > 40:
+                return ["refused: up to 40 characters"]
+            self.serial = arg
+            return ["serial number stored"]
+        if cmd == "factory" and arg == "yes":
+            self.saved, self.draft = _Settings(), None
+            return ["factory reset"]
+        return ["unknown command (help)"]
+
+    async def serve(self, host: str = "127.0.0.1", port: int = 0,
+                    ready: asyncio.Event | None = None) -> None:
         async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-            writer.write(f"boot: titiswitch {self.firmware}\n".encode())  # a log line first
+            # a reset on every port opening: the ESP32 boots for a moment, then its banner (sent
+            # at once it would be emptied by the port's opening, which drops waiting input)
+            await asyncio.sleep(0.15)
+            writer.write(f"TiTiRelay8 {self.firmware} boot, MAC {self.mac}\r\n".encode())
             try:
                 while line := await reader.readline():
-                    try:
-                        message = json.loads(line)
-                        reply = self.answer(message) if isinstance(message, dict) else {"ok": False}
-                    except ValueError:
-                        reply = {"ok": False, "error": "bad json"}
-                    writer.write((json.dumps(reply) + "\n").encode())
+                    for out in self.run(line.decode("utf-8", "replace")):
+                        writer.write(f"> {out}\r\n".encode())
                     await writer.drain()
             finally:
                 with contextlib.suppress(Exception):
@@ -93,10 +136,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--port", type=int, default=7700)
-    p.add_argument("--serial")
+    p.add_argument("--mac", default="24:6F:28:AA:BB:CC")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
-    board = FactoryBoard(args.serial)
+    board = FactoryBoard(mac=args.mac)
     log.info("factory board on socket://127.0.0.1:%d", args.port)
     run(board.serve(port=args.port))
     return 0
