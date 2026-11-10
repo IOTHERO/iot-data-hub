@@ -375,7 +375,7 @@ usbipd attach --wsl --busid 2-3      # پس از هر بار وصل کردن USB
 | نشانه | علت محتمل و راه |
 |---|---|
 | `failed to bind host port ... address already in use` | قانون‌های `portproxy` روش NAT با حالت mirrored تداخل دارند. در PowerShell Administrator: `foreach ($p in 80,443,7000,8883) { netsh interface portproxy delete v4tov4 listenport=$p listenaddress=0.0.0.0 }`، بعد `docker compose up -d`. اگر برنامهٔ دیگری درگاه را گرفته باشد: `Get-NetTCPConnection -LocalPort 443 -State Listen` |
-| `Temporary failure in name resolution` هنگام ساخت | اینترنت ویندوز از راه proxy است و WSL به آن دسترسی ندارد (بخش ۲-۳) |
+| `Temporary failure in name resolution` هنگام ساخت | روی WSL: اینترنت ویندوز از راه proxy است و WSL به آن دسترسی ندارد (بخش ۲-۳). روی سرور لینوکس: DNS سرور `files.pythonhosted.org` را پیدا نمی‌کند (بخش ۸-۰) |
 | `Input/output error` و `command not found` برای دستورهای ساده | دیسک مجازی WSL هنگام نوشتن آسیب دیده. در PowerShell: `wsl --shutdown`، بعد دوباره Ubuntu را باز کنید (سیستم فایل خودش تعمیر می‌شود). اگر بعدش دانلود image با `failed to stat parent` شکست خورد، بخش ۸-۱ |
 | `setup.sh: bad interpreter` یا `^M` | فایل با پایان خط ویندوزی کپی شده؛ پروژه را داخل WSL با `git clone` بگیرید، یا `sed -i 's/\r$//' deploy/setup.sh` |
 | `permission denied ... docker.sock` | `sudo usermod -aG docker $USER` و یک بار خروج و ورود دوباره به WSL |
@@ -384,6 +384,37 @@ usbipd attach --wsl --busid 2-3      # پس از هر بار وصل کردن USB
 | دستگاه به 8883 یا 7000 وصل نمی‌شود | ساعت دستگاه درست نیست (TLS به ساعت نیاز دارد)، `ca.crt` در Firmware نیست، یا درگاه در فایروال بسته است؛ `docker compose logs emqx hub` |
 | hub بالا نمی‌آید | `docker compose logs hub`؛ معمولاً یک مقدار در `.env` یا خطا در YAML دستگاه‌ها: `docker compose run --rm hub python -m hub.validate_config --config-dir /app/config` |
 | پس از روشن شدن ویندوز چیزی بالا نیست | WSL اجرا نشده (۲-۴). در NAT، IP عوض شده و portproxy باید دوباره اجرا شود |
+
+### ۸-۰. ساخت image در `pip install` با `Temporary failure in name resolution` می‌ماند
+
+اگر `Collecting ...` می‌آید ولی دانلود از `files.pythonhosted.org` شکست می‌خورد، یعنی خود سرور نمی‌تواند نام آن را پیدا کند. این را روی خود سرور (نه داخل Docker) امتحان کنید:
+
+```bash
+resolvectl query files.pythonhosted.org
+dig +short files.pythonhosted.org @1.1.1.1
+dig +short files.pythonhosted.org @8.8.8.8
+```
+
+یکی از سه راه را انتخاب کنید:
+
+1. **درست کردن DNS سرور.** اگر یکی از `dig`های بالا جواب داد، همان DNS را برای سرور بگذارید. در `/etc/systemd/resolved.conf` بنویسید:
+   ```
+   [Resolve]
+   DNS=1.1.1.1 8.8.8.8
+   ```
+   بعد `sudo systemctl restart systemd-resolved` را بزنید. اگر هیچ DNS خارجی جواب نداد (فیلتر)، یک DNS ضدتحریم یا DNS سرویس‌دهندهٔ سرور را بگذارید.
+2. **proxy فقط برای ساخت.** اگر روی سرور یا شبکه proxy دارید، آن را در `deploy/.env` بنویسید:
+   ```
+   BUILD_PROXY=http://<آدرس proxy>:<درگاه>
+   ```
+3. **mirror بسته‌های Python.** بسیاری از سرویس‌دهنده‌های ابری داخل ایران mirror خود PyPI را دارند. نشانی «simple» آن را از راهنمای سرویس‌دهنده بگیرید و در `deploy/.env` بنویسید:
+   ```
+   BUILD_PIP_INDEX=https://<mirror>/simple
+   BUILD_PIP_TRUSTED_HOST=<نام mirror>     # فقط اگر گواهی HTTPS آن معتبر نیست
+   ```
+   فقط از mirrorی استفاده کنید که به آن اعتماد دارید، چون بسته‌های برنامه از آن نصب می‌شوند. نسخهٔ هر بسته در `requirements.lock` ثابت است.
+
+بعد از هر کدام، دوباره `docker compose up -d --build` را بزنید. این تنظیم‌ها فقط هنگام ساخت image به کار می‌روند و در image یا برنامهٔ در حال اجرا نمی‌مانند.
 
 ### ۸-۱. لایهٔ خراب image پس از خطای دیسک
 

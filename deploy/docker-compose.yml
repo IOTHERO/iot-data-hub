@@ -39,6 +39,8 @@ services:
       network: host
       args:
         PIP_PROXY: ${BUILD_PROXY:-}
+        BUILD_PIP_INDEX: ${BUILD_PIP_INDEX:-}
+        BUILD_PIP_TRUSTED_HOST: ${BUILD_PIP_TRUSTED_HOST:-}
     image: iot-data-hub:latest
     restart: unless-stopped
     depends_on:

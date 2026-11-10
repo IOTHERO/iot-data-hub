@@ -23,11 +23,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-# a proxy for pip only (deploy/.env BUILD_PROXY), during the build; not kept in the image
+# during the build only, not kept in the image (deploy/.env): a proxy for pip (BUILD_PROXY), or
+# another package index when files.pythonhosted.org is not reachable (BUILD_PIP_INDEX, with
+# BUILD_PIP_TRUSTED_HOST for a mirror without a public certificate); empty = pypi.org directly
 ARG PIP_PROXY=""
+ARG BUILD_PIP_INDEX=""
+ARG BUILD_PIP_TRUSTED_HOST=""
 # dependencies first (a cached layer): exactly the locked, audited versions
 COPY requirements.lock ./
-RUN pip install -r requirements.lock
+RUN pip install ${BUILD_PIP_INDEX:+--index-url "$BUILD_PIP_INDEX"} \
+        ${BUILD_PIP_TRUSTED_HOST:+--trusted-host "$BUILD_PIP_TRUSTED_HOST"} -r requirements.lock
 
 COPY pyproject.toml README.md .env.example ./
 COPY hub ./hub
@@ -38,7 +43,8 @@ COPY frontend ./frontend
 COPY app ./app
 COPY maker ./maker
 COPY config ./config
-RUN pip install --no-deps . \
+RUN pip install ${BUILD_PIP_INDEX:+--index-url "$BUILD_PIP_INDEX"} \
+        ${BUILD_PIP_TRUSTED_HOST:+--trusted-host "$BUILD_PIP_TRUSTED_HOST"} --no-deps . \
     && useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin hub \
     && mkdir -p /app/logs /app/backups /app/pki /app/spool /app/certs /app/config/devices \
     && chown -R hub:hub /app/logs /app/backups /app/pki /app/spool /app/config \
