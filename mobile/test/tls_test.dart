@@ -2,6 +2,7 @@
 // phone shows the certificate first, accepts it only after it is approved, and only for that host
 // and port; the rest of TLS stays as strict as before.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:titiswitch/core/store.dart';
 import 'package:titiswitch/core/tls.dart';
 
+import 'fixtures/test_hub_cert.dart';
+
 void main() {
   late HttpServer server;
   late HttpServer other;                   // the same certificate on another port: another server
@@ -17,8 +20,8 @@ void main() {
 
   Future<HttpServer> serve() async {
     final ctx = SecurityContext()
-      ..useCertificateChain('test/fixtures/test-hub.crt.pem')
-      ..usePrivateKey('test/fixtures/test-hub.key.pem');
+      ..useCertificateChainBytes(utf8.encode(testHubCert))
+      ..usePrivateKeyBytes(utf8.encode(testHubKey));
     final s = await HttpServer.bindSecure(InternetAddress.loopbackIPv4, 0, ctx);
     s.listen((req) {
       req.response
