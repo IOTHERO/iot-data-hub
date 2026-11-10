@@ -5,6 +5,8 @@
     hub-admin verify-backup <file> [--full]
     hub-admin restore-backup <file> --yes
     hub-admin create-admin --username admin [--display-name "Administrator"]
+    hub-admin create-customer --email a@example.com --display-name "Ali" [--language fa]
+    hub-admin create-maker --org-id kish_smart --name "Kish" --email m@example.com --display-name M
     hub-admin reset-password <username>
     hub-admin unlock <username>
     hub-admin list-users
@@ -27,6 +29,7 @@ import argparse
 import getpass
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.security import hash_password, password_problems
@@ -60,6 +63,66 @@ async def _create_admin(url: str, username: str, display_name: str, min_length: 
         await store.add_auth_audit("user_created", username, user_id=user.user_id,
                                    detail={"via": "hub-admin", "roles": ["admin"]})
     print(f"administrator {username} created")
+    return 0
+
+
+async def _create_customer(url: str, email: str, display_name: str, language: str,
+                           min_length: int) -> int:
+    """A customer account that can sign in at once: e-mail verified, its own home - for sites
+    without an e-mail server and for testing (normally people sign up and verify by e-mail)."""
+    from backend.accounts import new_username, normalize_email
+
+    email = normalize_email(email)
+    async with PostgresStore(url, max_size=2) as store:
+        if await store.get_user_by_email(email):
+            print(f"{email} already has an account", file=sys.stderr)
+            return 1
+        password = _password(email, min_length)
+        user = await store.accounts.create_user(
+            username=new_username(), display_name=display_name, email=email,
+            password_hash=hash_password(password), language=language,
+            verified_at=datetime.now(UTC))
+        org_id = await store.accounts.ensure_personal_org(user, display_name)
+        await store.add_auth_audit("account_signup", user.username, user_id=user.user_id,
+                                   detail={"via": "hub-admin", "org_id": org_id})
+    print(f"customer {email} created (home {org_id}); sign in with the e-mail address")
+    return 0
+
+
+async def _create_maker(url: str, org_id: str, name: str, email: str, display_name: str,
+                        language: str, min_length: int) -> int:
+    """A manufacturer organization and its first administrator for the maker panel (/maker/),
+    who can sign in at once; an existing account with that e-mail just gets the role."""
+    import re
+
+    from backend.accounts import new_username, normalize_email
+    from hub.storage.platform import PlatformError
+
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", org_id):
+        print("--org-id: lowercase letters, digits and _, starting with a letter",
+              file=sys.stderr)
+        return 1
+    email = normalize_email(email)
+    async with PostgresStore(url, max_size=2) as store:
+        try:
+            await store.platform.create_organization(org_id, name, "manufacturer")
+            print(f"maker organization {org_id} created")
+        except PlatformError:
+            print(f"maker organization {org_id} exists: adding its administrator")
+        user = await store.get_user_by_email(email)
+        if user is None:
+            user = await store.accounts.create_user(
+                username=new_username(), display_name=display_name, email=email,
+                password_hash=hash_password(_password(email, min_length)), language=language,
+                verified_at=datetime.now(UTC))
+        held = {(g.role_id, g.org_id) for g in await store.grants(user.user_id)}
+        if ("manufacturer_admin", org_id) not in held:
+            await store.grant_role(user.user_id, "manufacturer_admin", None, None, None,
+                                   org_id=org_id)
+            await store.add_auth_audit("role_granted", user.username, user_id=user.user_id,
+                                       detail={"via": "hub-admin", "role": "manufacturer_admin",
+                                               "org_id": org_id})
+    print(f"{email} is the administrator of {org_id}: sign in at /maker/ with the e-mail address")
     return 0
 
 
@@ -249,6 +312,18 @@ def main(argv: list[str] | None = None) -> int:
     create = sub.add_parser("create-admin")
     create.add_argument("--username", required=True)
     create.add_argument("--display-name", default="Administrator")
+    customer = sub.add_parser("create-customer",
+                              help="a customer who can sign in at once (no e-mail needed)")
+    customer.add_argument("--email", required=True)
+    customer.add_argument("--display-name", required=True)
+    customer.add_argument("--language", choices=["fa", "en"], default="fa")
+    maker = sub.add_parser("create-maker",
+                           help="a manufacturer and its maker-panel administrator (no e-mail)")
+    maker.add_argument("--org-id", required=True, help="e.g. kish_smart")
+    maker.add_argument("--name", required=True, help="the company name")
+    maker.add_argument("--email", required=True)
+    maker.add_argument("--display-name", required=True)
+    maker.add_argument("--language", choices=["fa", "en"], default="fa")
     for name in ("reset-password", "unlock"):
         sub.add_parser(name).add_argument("username")
     sub.add_parser("list-users")
@@ -371,6 +446,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "create-admin":
         return run(_create_admin(url, args.username.lower(), args.display_name, min_length))
+    if args.command == "create-maker":
+        return run(_create_maker(url, args.org_id, args.name, args.email, args.display_name,
+                                 args.language, min_length))
+    if args.command == "create-customer":
+        return run(_create_customer(url, args.email, args.display_name, args.language,
+                                    min_length))
     if args.command == "backup":
         from hub.maintenance import backup_database, prune_backups
 

@@ -75,6 +75,9 @@ cp ca/ca.crt certs/ca.crt
 chmod 755 certs
 chmod 644 certs/server.crt certs/ca.crt certs/server.key
 echo "device certificate for: ${san}"
+# the phone app shows this when it first connects (a private CA): compare and approve
+echo "SHA-256 fingerprint (compare in the app): $(openssl x509 -in certs/server.crt -noout -fingerprint -sha256 | cut -d= -f2)"
 echo
 echo "next:  docker compose up -d --build"
 echo "       docker compose exec hub hub-admin create-admin --username admin"
+echo "       docker compose exec hub hub-admin create-customer --email you@example.com --display-name You"

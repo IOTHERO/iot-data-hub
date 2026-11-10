@@ -1,11 +1,15 @@
 // TiTiSwitch customer app (Flutter, Android and iOS). Start: the logo splash, then the hub
 // address (first start only), sign-in, and the app: home, scenes, me (screens/).
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/app_state.dart';
 import 'core/notify.dart';
+import 'core/tls.dart';
 import 'screens/login.dart';
 import 'screens/server.dart';
 import 'screens/shell.dart';
@@ -15,6 +19,9 @@ import 'ui/theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final state = await AppState.open();
+  // HTTPS everywhere in the app: a certificate the system refuses passes only when the user
+  // approved exactly that one for that server (core/tls.dart, screens/server.dart)
+  if (!kIsWeb) HttpOverrides.global = PinnedOverrides(state.trusted);
   await Notify.init();                       // alarms as phone notifications (core/notify.dart)
   runApp(TiTiSwitchApp(state: state));
 }

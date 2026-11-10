@@ -103,3 +103,41 @@ async def test_verify_audit_and_reset_mfa_commands(store: Any, database_url: str
     assert "auth_audit: OK" in capsys.readouterr().out
     assert await asyncio.to_thread(admin.main, ["reset-mfa", "op.one"]) == 0
     assert (await store.get_user(user.user_id)).totp_enabled is False  # type: ignore[union-attr]
+
+
+async def test_create_customer_signs_in_without_e_mail(store: Any, database_url: str,
+                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """hub-admin create-customer: verified at once, with its own home (sites with no e-mail
+    server, testing); the same address twice and a weak password are refused."""
+    monkeypatch.setenv("HUB_DATABASE_URL", database_url)
+    monkeypatch.setenv("HUB_ADMIN_PASSWORD", "Customer-Pass-2026")
+    args = ["create-customer", "--email", "Ali@Example.test", "--display-name", "Ali"]
+    assert await asyncio.to_thread(admin.main, args) == 0
+    user = await store.get_user_by_email("ali@example.test")
+    assert user is not None and user.email_verified_at is not None
+    homes = await store.accounts.memberships(user.user_id)
+    assert [m.personal for m in homes] == [True]
+    assert await asyncio.to_thread(admin.main, args) == 1             # already has an account
+    monkeypatch.setenv("HUB_ADMIN_PASSWORD", "short")
+    with pytest.raises(SystemExit, match="password rejected"):
+        await asyncio.to_thread(admin.main, ["create-customer", "--email", "b@example.test",
+                                             "--display-name", "B"])
+
+
+async def test_create_maker_makes_the_organization_and_its_administrator(
+        store: Any, database_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """hub-admin create-maker: a manufacturer and a maker-panel administrator who can sign in at
+    once; run again for an existing organization it only adds the role."""
+    monkeypatch.setenv("HUB_DATABASE_URL", database_url)
+    monkeypatch.setenv("HUB_ADMIN_PASSWORD", "Maker-Pass-2026x")
+    args = ["create-maker", "--org-id", "kish_smart", "--name", "Kish Smart",
+            "--email", "m@example.test", "--display-name", "M"]
+    assert await asyncio.to_thread(admin.main, args) == 0
+    orgs = {o.org_id: o.kind for o in await store.platform.organizations(None)}
+    assert orgs["kish_smart"] == "manufacturer"
+    user = await store.get_user_by_email("m@example.test")
+    assert user is not None and user.email_verified_at is not None
+    grants = await store.grants(user.user_id)
+    assert [(g.role_id, g.org_id) for g in grants] == [("manufacturer_admin", "kish_smart")]
+    assert await asyncio.to_thread(admin.main, args) == 0            # again: no second user
+    assert await asyncio.to_thread(admin.main, [*args[:2], "Bad-Id", *args[3:]]) == 1

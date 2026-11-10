@@ -858,7 +858,14 @@
     "email_link": "E-mail link (verify, new password, invitation)",
     "email_link_help": "Paste the link the system e-mailed you; the app does what that page would do.",
     "holiday_add": "Add a home holiday",
-    "holiday_date": "Date (Jalali, YYYY/MM/DD)"
+    "holiday_date": "Date (Jalali, YYYY/MM/DD)",
+    "cert_title": "Confirm the server's certificate",
+    "cert_help": "This server uses its own certificate (a private network or your own server). Compare the fingerprint below with the one the server's installer printed (deploy/setup.sh). Trust it only if they are the same.",
+    "cert_host": "Server",
+    "cert_print": "SHA-256 fingerprint",
+    "cert_valid": "Valid until",
+    "cert_trust": "They match, trust",
+    "server_unreachable": "The server did not answer: {error}"
   },
   "alarm": {
     "title": "Alarms",

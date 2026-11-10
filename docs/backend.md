@@ -148,6 +148,12 @@ goes in the URL). The server answers `snapshot` (tags, devices, active alarms) a
 3. Copy `.env.example` to `.env`; set `HUB_DATABASE_URL`, a long random `HUB_JWT_SECRET`, device
    credentials. Leave `HUB_CONTROL_ENABLED=false` until commissioning is done.
 4. `.venv\Scripts\hub-admin.exe create-admin --username <name>` (applies migrations too).
+   A platform customer who can sign in at once (no e-mail server, testing):
+   `hub-admin create-customer --email <address> --display-name <name> [--language fa|en]`
+   (e-mail verified, its own home; normally customers sign up and verify by e-mail).
+   A manufacturer and its maker-panel administrator, signed in at once:
+   `hub-admin create-maker --org-id <id> --name <company> --email <address> --display-name <name>`
+   (an existing account with that e-mail only gets the `manufacturer_admin` role).
 5. `.venv\Scripts\python.exe -m hub.validate_config`, then `.venv\Scripts\hub-api.exe`.
 6. Run it as a Windows service with a service wrapper (e.g. NSSM or WinSW) pointing at
    `hub-api.exe` with the project folder as working directory; set it to restart on failure.

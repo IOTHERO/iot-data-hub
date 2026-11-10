@@ -14,6 +14,7 @@ import 'live.dart';
 import 'notify.dart';
 import 'presence.dart';
 import 'store.dart';
+import 'tls.dart';
 
 class AppState extends ChangeNotifier {
   AppState._(this.store, this.api, this.i18n) : live = Live(api), alerts = Alerts(api) {
@@ -29,6 +30,8 @@ class AppState extends ChangeNotifier {
   }
 
   final Store store;
+  /// Server certificates the user approved (a hub with its own CA; core/tls.dart).
+  late final TrustedCerts trusted = TrustedCerts(store);
   final Api api;
   final Live live;                   // server-sent updates while signed in
   final Alerts alerts;               // open security alerts (PIR, magnet, smoke)
