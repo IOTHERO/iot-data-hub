@@ -12,23 +12,34 @@ import 'package:titiswitch/core/tls.dart';
 
 void main() {
   late HttpServer server;
+  late HttpServer other;                   // the same certificate on another port: another server
   late Uri base;
 
-  setUp(() async {
+  Future<HttpServer> serve() async {
     final ctx = SecurityContext()
       ..useCertificateChain('test/fixtures/test-hub.crt.pem')
       ..usePrivateKey('test/fixtures/test-hub.key.pem');
-    server = await HttpServer.bindSecure(InternetAddress.loopbackIPv4, 0, ctx);
-    server.listen((req) {
+    final s = await HttpServer.bindSecure(InternetAddress.loopbackIPv4, 0, ctx);
+    s.listen((req) {
       req.response
         ..statusCode = 200
         ..write('{"status":"ok"}');
       req.response.close();
     });
-    base = Uri.parse('https://localhost:${server.port}');
+    return s;
+  }
+
+  setUp(() async {
+    server = await serve();
+    other = await serve();
+    // by address, not "localhost" (which may be ::1 first, where the server does not listen)
+    base = Uri.parse('https://127.0.0.1:${server.port}');
   });
 
-  tearDown(() => server.close(force: true));
+  tearDown(() async {
+    await server.close(force: true);
+    await other.close(force: true);
+  });
 
   test('an unknown certificate is shown, then accepted only once approved', () async {
     SharedPreferences.setMockInitialValues({});
@@ -36,7 +47,7 @@ void main() {
 
     final first = await checkServer(base, trusted);
     expect(first, isNotNull);
-    expect(first!.host, 'localhost');
+    expect(first!.host, '127.0.0.1');
     expect(first.port, server.port);
     expect(first.print, matches(RegExp(r'^([0-9A-F]{2}:){31}[0-9A-F]{2}$')));
 
@@ -55,8 +66,8 @@ void main() {
     // the approval is for that host and port only, and survives a restart of the app
     final again = TrustedCerts(await Store.open());
     expect(await checkServer(base, again), isNull);
-    expect(await checkServer(base.replace(host: '127.0.0.1'), again), isNotNull);
-    await again.forget('localhost', server.port);
+    expect(await checkServer(base.replace(port: other.port), again), isNotNull);
+    await again.forget('127.0.0.1', server.port);
     expect(await checkServer(base, again), isNotNull);
   });
 }
