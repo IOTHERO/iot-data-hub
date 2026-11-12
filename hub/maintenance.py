@@ -24,9 +24,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import glob
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -69,9 +71,33 @@ def hour_floor(ts: datetime, tz: str = "UTC") -> datetime:
     return local.astimezone(ts.tzinfo)
 
 
-def find_pg_tool(name: str, pg_dump: str | None = None) -> str:
+@functools.cache
+def _tool_major(path: str) -> int | None:
+    """The major version of a PostgreSQL client tool ("pg_restore (PostgreSQL) 16.4" -> 16)."""
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=20,
+                             check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"\) (\d+)", out)
+    return int(match.group(1)) if match else None
+
+
+def server_major(database_url: str) -> int | None:
+    """The database server's major version, so the client tools can match it (a newer pg_dump
+    writes settings an older server refuses on restore, e.g. transaction_timeout)."""
+    try:
+        with psycopg.connect(database_url, autocommit=True) as conn:
+            row = conn.execute("SHOW server_version_num").fetchone()
+        return int(row[0]) // 10000 if row else None
+    except (psycopg.Error, ValueError):
+        return None
+
+
+def find_pg_tool(name: str, pg_dump: str | None = None, major: int | None = None) -> str:
     """A PostgreSQL client tool (pg_dump, pg_restore): next to HUB_PG_DUMP, on PATH, in a
-    standard Windows install, or from pgserver (development)."""
+    standard Windows install, or from pgserver (development). With ``major`` (the server's),
+    a tool of that version is preferred over the first one found."""
     candidates: list[str] = []
     if pg_dump:
         explicit = Path(pg_dump)
@@ -86,15 +112,19 @@ def find_pg_tool(name: str, pg_dump: str | None = None) -> str:
 
         base = Path(pgserver.__file__).parent
         candidates += [str(p) for p in base.rglob(f"{name}*") if p.stem == name]
-    for c in candidates:
-        if Path(c).is_file():
-            return c
+    existing = [c for c in candidates if Path(c).is_file()]
+    if major is not None:
+        for c in existing:
+            if _tool_major(c) == major:
+                return c
+    if existing:
+        return existing[0]
     raise FileNotFoundError(f"{name} not found: install the PostgreSQL client tools or set "
                             "HUB_PG_DUMP to the full path of pg_dump")
 
 
-def find_pg_dump(explicit: str | None = None) -> str:
-    return find_pg_tool("pg_dump", explicit)
+def find_pg_dump(explicit: str | None = None, major: int | None = None) -> str:
+    return find_pg_tool("pg_dump", explicit, major)
 
 
 def backup_database(database_url: str, out_dir: Path, pg_dump: str | None = None,
@@ -107,7 +137,8 @@ def backup_database(database_url: str, out_dir: Path, pg_dump: str | None = None
     env = dict(os.environ)
     if params.get("password"):
         env["PGPASSWORD"] = str(params.pop("password"))
-    args = [find_pg_dump(pg_dump), "--format=custom", "--no-owner", f"--file={target}"]
+    args = [find_pg_dump(pg_dump, server_major(database_url)), "--format=custom", "--no-owner",
+            f"--file={target}"]
     for key, flag in (("host", "--host"), ("port", "--port"), ("user", "--username"),
                       ("dbname", "--dbname")):
         if params.get(key):
@@ -200,7 +231,8 @@ def restore_test(database_url: str, path: Path, data_key: str | None = None,
                 conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
                 conn.execute("SELECT timescaledb_pre_restore()")
         with plain_backup(path, data_key) as plain:
-            args = [find_pg_tool("pg_restore", pg_dump), "--no-owner", "--exit-on-error",
+            args = [find_pg_tool("pg_restore", pg_dump, server_major(database_url)),
+                    "--no-owner", "--exit-on-error",
                     f"--dbname={scratch}", str(plain)]
             for key, flag in (("host", "--host"), ("port", "--port"), ("user", "--username")):
                 if params.get(key):
@@ -240,7 +272,8 @@ def restore_backup(database_url: str, path: Path, data_key: str | None = None,
     if params.get("password"):
         env["PGPASSWORD"] = str(params.pop("password"))
     with plain_backup(path, data_key) as plain:
-        args = [find_pg_tool("pg_restore", pg_dump), "--clean", "--if-exists", "--no-owner",
+        args = [find_pg_tool("pg_restore", pg_dump, server_major(database_url)), "--clean",
+                "--if-exists", "--no-owner",
                 "--single-transaction", "--exit-on-error"]
         for key, flag in (("host", "--host"), ("port", "--port"), ("user", "--username"),
                           ("dbname", "--dbname")):

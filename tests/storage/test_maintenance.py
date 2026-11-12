@@ -107,7 +107,8 @@ def test_backup_password_not_on_command_line(monkeypatch: pytest.MonkeyPatch,
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr("hub.maintenance.subprocess.run", fake_run)
-    monkeypatch.setattr("hub.maintenance.find_pg_dump", lambda explicit=None: "pg_dump")
+    monkeypatch.setattr("hub.maintenance.find_pg_dump", lambda explicit=None, major=None: "pg_dump")
+    monkeypatch.setattr("hub.maintenance.server_major", lambda url: None)
     backup_database("postgresql://hub:s3cret@db:5432/hub", tmp_path, now=NOW)
     assert not any("s3cret" in a for a in seen["args"])
     assert seen["env"]["PGPASSWORD"] == "s3cret"
