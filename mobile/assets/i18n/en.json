@@ -46,7 +46,21 @@
     "verify": "Confirm e-mail",
     "verified": "E-mail address confirmed. Sign in now.",
     "have_account": "Have an account?",
-    "remember": "Remember me"
+    "remember": "Remember me",
+    "change_title": "Set a new password",
+    "change_lead": "This is the first sign-in of this account. Set a password of your own to continue.",
+    "repeat_password": "Repeat the new password",
+    "change_submit": "Save and continue",
+    "passwords_differ": "The two passwords differ",
+    "show_password": "Show password",
+    "hide_password": "Hide password",
+    "phone_login": "Sign in with a mobile number",
+    "phone": "Mobile number",
+    "phone_send": "Send the code",
+    "phone_code": "Code from the SMS",
+    "phone_sent": "The code was sent by SMS.",
+    "phone_lead": "A one-time code arrives by SMS. A new number gets an account at once.",
+    "back_to_login": "Back to sign-in with a password"
   },
   "invite": {
     "title": "Invitation",
@@ -248,7 +262,11 @@
     "invalid_role": "This role is not allowed",
     "invalid_device": "The device settings are not valid",
     "not_authenticated": "Sign in again",
-    "pairing_required": "The code is right, but the device is not in pairing mode. Hold the device's button for a few seconds until its light blinks, then try again (within 2 minutes)."
+    "pairing_required": "The code is right, but the device is not in pairing mode. Hold the device's button for a few seconds until its light blinks, then try again (within 2 minutes).",
+    "invalid_phone": "Enter the mobile number as 09123456789",
+    "invalid_code": "The code is wrong or expired",
+    "sms_unavailable": "This server has no SMS panel set; sign in with e-mail",
+    "sms_failed": "The SMS could not be sent; try again"
   },
   "week": {
     "0": "Sat",
@@ -528,7 +546,10 @@
     "peak_to": "Peak to",
     "factor": "Peak factor",
     "tax": "Tax (%)",
-    "fixed": "Fixed monthly charge"
+    "fixed": "Fixed monthly charge",
+    "delete": "Delete this home",
+    "delete_confirm": "Delete this home? Its members lose access. This cannot be undone.",
+    "delete_not_empty": "Move or remove the home's devices first."
   },
   "tickets": {
     "title": "Support and warranty",
@@ -865,7 +886,10 @@
     "cert_print": "SHA-256 fingerprint",
     "cert_valid": "Valid until",
     "cert_trust": "They match, trust",
-    "server_unreachable": "The server did not answer: {error}"
+    "server_unreachable": "The server did not answer: {error}",
+    "test_server": "Test the server",
+    "server_ok": "The server is online and answering (version {version}). You can connect.",
+    "server_not_hub": "This address answered, but it is not a TiTiSwitch server."
   },
   "alarm": {
     "title": "Alarms",

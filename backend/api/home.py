@@ -88,6 +88,29 @@ async def rename_home(org_id: str, body: HomeIn, svc: ServicesDep, p: Signed,
     return {"org_id": org_id, "name": body.name.strip()}
 
 
+@router.delete("/api/account/homes/{org_id}", status_code=204)
+async def delete_home(org_id: str, svc: ServicesDep, p: Signed, request: Request) -> None:
+    """The owner closes a home he made (not his personal one). It must hold no device: move
+    or remove them first, so nothing is lost silently."""
+    org = await svc.store.accounts.organization(org_id)
+    if org is None or org["kind"] != "customer":
+        raise NotFound("home not found")
+    if org["personal_user_id"] is not None:
+        raise Conflict("the personal home cannot be deleted", code="personal_home")
+    mine = [m for m in await svc.accounts.memberships(p)
+            if m.org_id == org_id and m.role_id == "customer_owner"]
+    if not mine:
+        raise Forbidden("only the owner can delete a home")
+    rows, _ = await svc.store.platform.devices({org_id}, limit=1)
+    if rows:
+        raise Conflict("the home still has devices", code="home_not_empty")
+    if not await svc.store.home.retire_home(org_id):
+        raise NotFound("home not found")
+    await svc.store.add_auth_audit("home_updated", p.username, user_id=p.user_id,
+                                   client_addr=client_addr(request),
+                                   detail={"org_id": org_id, "deleted": True})
+
+
 class DeleteAccountIn(BaseModel):
     password: str = Field(min_length=1, max_length=256)
     confirm: Literal["DELETE"]

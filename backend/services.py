@@ -92,6 +92,7 @@ class Services:
             from backend.mailer import make_mailer
             self.accounts = AccountService(self.store, self.settings, self.auth,
                                            make_mailer(self.settings))
+        self.accounts.sms = self.sms
         if self.claims is None:
             from backend.claims import ClaimService
             self.claims = ClaimService(self)

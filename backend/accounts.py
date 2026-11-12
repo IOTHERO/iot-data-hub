@@ -84,6 +84,8 @@ class AccountService:
         self.mailer = mailer
         self.clock = clock
         self._hits: dict[tuple[str, str], deque[datetime]] = {}
+        self.sms: Any = None                        # set by Services (backend.sms gateway)
+        self._codes: dict[str, tuple[str, datetime, int]] = {}   # phone -> (hash, expires, tries)
 
     # --- helpers ------------------------------------------------------------------------------
 
@@ -174,6 +176,10 @@ class AccountService:
             await self._activate(user, client_addr)
             await self._accept(user, invitation, None, client_addr)
             return {"status": "active"}
+        if not self.settings.verify_email_required:
+            # no e-mail to confirm (no SMTP server, or HUB_EMAIL_VERIFICATION=off): active at once
+            await self._activate(user, client_addr)
+            return {"status": "active"}
         await self._send_verification(user)
         return {"status": "check_email"}
 
@@ -184,6 +190,77 @@ class AccountService:
         if user.email:
             await self._mail(user.email, "verify", user.language, name=user.display_name,
                              link=self.link("verify", token), hours=self.settings.verify_hours)
+
+    # --- sign-in with a mobile number: a one-time code by SMS ---------------------------------
+    # The first correct code creates the account (user name "p<number>", a random password nobody
+    # knows, its own home); later ones sign in. The codes live in memory: five minutes, five tries.
+
+    OTP_TTL = timedelta(minutes=5)
+    OTP_TRIES = 5
+
+    @staticmethod
+    def _code_hash(phone: str, code: str) -> str:
+        return hashlib.sha256(f"{phone}:{code}".encode()).hexdigest()
+
+    @staticmethod
+    def _valid_phone(phone: str) -> str:
+        from backend.sms import normalize_phone
+        number = normalize_phone(phone)
+        if not re.fullmatch(r"09[0-9]{9}", number):
+            raise Invalid("enter the mobile number as 09xxxxxxxxx", code="invalid_phone")
+        return number
+
+    async def request_phone_code(self, phone: str, client_addr: str | None) -> dict[str, Any]:
+        number = self._valid_phone(phone)
+        if self.sms is None or not getattr(self.sms, "enabled", False):
+            raise Invalid("this hub has no SMS panel set (HUB_SMS_PROVIDER)",
+                          code="sms_unavailable")
+        await self._ip_limit("otp", client_addr)
+        await self._limit("otp_phone", number, 5, client_addr)
+        existing = await self.store.get_user_by_username("p" + number)
+        if existing is None and not self.settings.signup_enabled:
+            raise Forbidden("sign-up is not open on this hub", code="signup_disabled")
+        code = f"{secrets.randbelow(10**6):06d}"
+        self._codes[number] = (self._code_hash(number, code), self.clock() + self.OTP_TTL, 0)
+        if len(self._codes) > 5000:
+            for old in list(self._codes)[:1000]:
+                del self._codes[old]
+        if not await self.sms.send(number, f"{code} :TiTiSwitch"):
+            self._codes.pop(number, None)
+            raise Invalid("the SMS could not be sent; try again", code="sms_failed")
+        return {"status": "sent", "expires_in": int(self.OTP_TTL.total_seconds())}
+
+    async def verify_phone_code(self, phone: str, code: str, client_addr: str | None,
+                                user_agent: str | None, remember: bool) -> Any:
+        number = self._valid_phone(phone)
+        await self._ip_limit("otp_verify", client_addr)
+        entry = self._codes.get(number)
+        bad = Forbidden("the code is wrong or expired", code="invalid_code")
+        if entry is None or entry[1] < self.clock():
+            self._codes.pop(number, None)
+            raise bad
+        digest, expires, tries = entry
+        if not secrets.compare_digest(digest, self._code_hash(number, code.strip())):
+            if tries + 1 >= self.OTP_TRIES:
+                del self._codes[number]
+            else:
+                self._codes[number] = (digest, expires, tries + 1)
+            raise bad
+        del self._codes[number]
+        user = await self.store.get_user_by_username("p" + number)
+        if user is None:
+            if not self.settings.signup_enabled:
+                raise Forbidden("sign-up is not open on this hub", code="signup_disabled")
+            user = await self.store.create_user(
+                "p" + number, number, hash_password(secrets.token_urlsafe(32)),
+                must_change_password=False)
+            await self.store.add_auth_audit("account_signup", user.username, user_id=user.user_id,
+                                            client_addr=client_addr, detail={"phone": True})
+            await self._activate(user, client_addr)
+        if not user.is_active:
+            raise Forbidden("the account is disabled", code="account_disabled")
+        return await self.auth._complete_login(user, client_addr, user_agent, mfa=False,
+                                               remember=remember)
 
     async def _activate(self, user: UserRecord, client_addr: str | None) -> str:
         await self.accounts.mark_verified(user.user_id, self.clock())

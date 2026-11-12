@@ -356,9 +356,11 @@ class _LayoutEditor extends StatelessWidget {
               ),
           ],
         ),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: TextButton(onPressed: () => s.setHomeLayout(null), child: Text(s.t('layout.reset'))),
+        const SizedBox(height: 6),
+        OutlinedButton.icon(                    // always at the bottom of the editor
+          onPressed: () => s.setHomeLayout(null),
+          icon: const Icon(Icons.restart_alt_rounded, size: 20),
+          label: Text(s.t('layout.reset')),
         ),
       ]),
     );

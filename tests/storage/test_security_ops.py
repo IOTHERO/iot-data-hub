@@ -141,3 +141,30 @@ async def test_create_maker_makes_the_organization_and_its_administrator(
     assert [(g.role_id, g.org_id) for g in grants] == [("manufacturer_admin", "kish_smart")]
     assert await asyncio.to_thread(admin.main, args) == 0            # again: no second user
     assert await asyncio.to_thread(admin.main, [*args[:2], "Bad-Id", *args[3:]]) == 1
+
+
+async def test_first_install_makes_one_administrator_for_every_panel(store: Any) -> None:
+    """HUB_BOOTSTRAP_ADMIN_PASSWORD on an empty database: one account that is the administrator,
+    the default manufacturer's administrator and has its own home, and must set a new password;
+    nothing happens when a user exists already or the password is weak."""
+    from backend.bootstrap import bootstrap_first_install
+    from backend.settings import Settings
+
+    def settings(password: str | None) -> Settings:
+        env = {"HUB_JWT_SECRET": "s" * 40}
+        if password:
+            env["HUB_BOOTSTRAP_ADMIN_PASSWORD"] = password
+        return Settings.from_env(env)
+
+    assert await bootstrap_first_install(store, settings(None)) is False
+    assert await bootstrap_first_install(store, settings("short")) is False
+    assert await store.count_users() == 0
+    assert await bootstrap_first_install(store, settings("First-Install-Pass-1")) is True
+    user = await store.get_user_by_username("admin")
+    assert user is not None and user.must_change_password is True
+    roles = {(g.role_id, g.org_id) for g in await store.grants(user.user_id)}
+    assert ("admin", None) in roles and ("manufacturer_admin", "titiswitch") in roles
+    assert await store.accounts.personal_org(user.user_id) is not None
+    orgs = {o.org_id: o.kind for o in await store.platform.organizations(None)}
+    assert orgs["titiswitch"] == "manufacturer"
+    assert await bootstrap_first_install(store, settings("Another-Pass-2026")) is False

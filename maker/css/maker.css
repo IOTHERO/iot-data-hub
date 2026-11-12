@@ -19,7 +19,7 @@
   --teal: #7FD1C7; --teal-text: #9FE3DA; --teal-soft: rgba(127,209,199,0.14);
   --violet: #A99BFF; --violet-text: #D3CCFF; --violet-soft: rgba(169,155,255,0.14);
   --orange: #FF9F7A; --orange-text: #FFBFA6; --orange-soft: rgba(255,159,122,0.14);
-  --font: "Vazirmatn", "Segoe UI", Tahoma, system-ui, sans-serif;
+  --font: Arial, "Vazirmatn", "Segoe UI", Tahoma, system-ui, sans-serif;
   --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
 }
 :root[data-accent="gold"] { --accent: #E8B86A; --accent-text: #F3CF8F;
@@ -110,6 +110,9 @@ svg.i { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: rou
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
 .tile { padding: 18px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line);
         display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--text); }
+button.tile { font: inherit; color: inherit; text-align: start; cursor: pointer; display: block; }
+.tile.pick:hover { border-color: var(--accent-text); }
+.tile.pick.on { outline: 2px solid var(--accent-text); outline-offset: -2px; }
 .tile .label { font-size: 12px; color: var(--muted); }
 .tile .value { font-size: 26px; font-weight: 700; }
 .tile.hot { background: var(--accent-tile); border-color: rgba(232,184,106,0.35); }

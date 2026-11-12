@@ -317,6 +317,16 @@ export function homeSettings(state, orgId) {
           currency: lang === "fa" ? "ریال" : "IRR" } });
       toast(t("common.saved"), "ok");
     }));
+    const del = h("button", { class: "btn danger block" }, icon("trash"), t("homeset.delete"));
+    del.addEventListener("click", busy(del, async () => {
+      if (!confirm(t("homeset.delete_confirm"))) return;
+      try { await api("DELETE", `/api/account/homes/${orgId}`); } catch (err) {
+        toast(err.code === "home_not_empty" ? t("homeset.delete_not_empty") : errorText(err), "err");
+        return;
+      }
+      toast(t("common.saved"), "ok");
+      location.hash = "#/me";
+    }));
     fill(page, header(t("homeset.title"), "#/me", me ? (me.personal ? t("me.my_home") : me.name) : ""),
       h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("homeset.name")), nameIn),
       h("section", { class: "card stack" }, h("h2", { class: "h2" }, t("homeset.place")),
@@ -328,7 +338,7 @@ export function homeSettings(state, orgId) {
         h("div", { class: "two" }, labelled(t("homeset.peak_from"), peakFrom), labelled(t("homeset.peak_to"), peakTo)),
         h("div", { class: "two" }, labelled(t("homeset.factor"), factor), labelled(t("homeset.tax"), tax)),
         labelled(t("homeset.fixed"), fixed)),
-      save, connectionSection(orgId));
+      save, owner && !me?.personal ? del : null, connectionSection(orgId));
   })();
   return page;
 }

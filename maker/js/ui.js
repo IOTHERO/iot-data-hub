@@ -48,7 +48,13 @@ export function checkbox(label, checked, onchange = null) {
   return { box, el: h("label", { class: "check" }, box, label) };
 }
 
-export function tile(label, value, kind = "", href = null) {
+export function tile(label, value, kind = "", href = null, onClick = null, on = false) {
+  if (onClick) {               // a card that opens what it counts (a filter of the list below)
+    return h("button", { type: "button", class: `tile pick ${kind === "hot" ? "hot" : ""} ${on ? "on" : ""}`,
+      "aria-pressed": on, onclick: onClick },
+    h("span", { class: "label" }, label),
+    h("span", { class: `value ${kind === "hot" ? "" : kind}` }, value));
+  }
   return h(href ? "a" : "div", { class: `tile ${kind === "hot" ? "hot" : ""}`, href },
     h("span", { class: "label" }, label),
     h("span", { class: `value ${kind === "hot" ? "" : kind}` }, value));

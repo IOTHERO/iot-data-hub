@@ -107,7 +107,10 @@ class Backend:
 
 
 def make_settings(**overrides: Any) -> Settings:
+    # the tests exercise the e-mail confirmation of sign-up (no SMTP server here, which "auto"
+    # would read as "no confirmation"); test_signup_without_email_server.py covers the other way
     base = {"jwt_secret": "x" * 40, "control_enabled": True, "login_max_failures": 3,
+            "email_verification": "on",
             "lockout_minutes": 15, "password_min_length": 10,
             # the developer's disk is not what these tests check (tests/api/test_health_watch
             # sets its own thresholds where the disk check itself is tested)

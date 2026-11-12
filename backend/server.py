@@ -90,9 +90,11 @@ async def serve(settings: Settings) -> int:
             await ha.start()  # standby until it holds the lock
         else:
             await services.start()
-        if await store.count_users() == 0:
-            log.warning("no users yet: create the first administrator with "
-                        "'hub-admin create-admin --username admin'")
+        from backend.bootstrap import bootstrap_first_install
+
+        if not await bootstrap_first_install(store, settings) and await store.count_users() == 0:
+            log.warning("no users yet: set HUB_BOOTSTRAP_ADMIN_PASSWORD (deploy/.env) or create "
+                        "the first administrator with 'hub-admin create-admin --username admin'")
         if not settings.control_enabled:
             log.info("control is disabled (HUB_CONTROL_ENABLED=false): writes are refused")
         tls: dict[str, str] = {}

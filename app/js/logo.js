@@ -37,7 +37,7 @@ function toggle(n, x, y, knobY) {
 
 /** The logo; `wordmark` adds the name under the mark. */
 export function logo({ wordmark = true, label = "TiTiSwitch" } = {}) {
-  const svg = el("svg", { class: "tt-logo", viewBox: wordmark ? "400 150 1150 1560" : "400 150 1100 1120",
+  const svg = el("svg", { class: "tt-logo", viewBox: wordmark ? "400 150 1150 1680" : "400 150 1100 1120",
     role: "img", "aria-label": label });
   svg.append(
     el("path", { class: "lg-line", pathLength: 1, "stroke-width": 37,
@@ -48,8 +48,8 @@ export function logo({ wordmark = true, label = "TiTiSwitch" } = {}) {
     signal(647, 1233, 32, 32, [[80, 135, 225, 0], [137, 135, 225, 1], [195, 135, 225, 2]]));
   if (wordmark) {
     const fa = el("text", { class: "lg-word", x: 990, y: 1500, "text-anchor": "middle", direction: "rtl" });
-    fa.textContent = "تی‌تی‌سویچ";
-    const en = el("text", { class: "lg-latin", x: 990, y: 1680, "text-anchor": "middle" });
+    fa.textContent = "تی‌تی‌ سوئیچ";
+    const en = el("text", { class: "lg-latin", x: 990, y: 1790, "text-anchor": "middle" });
     en.textContent = "TiTiSwitch";
     svg.append(fa, en);
   }

@@ -138,7 +138,8 @@ class AuthService:
     # --- login --------------------------------------------------------------------------------
 
     async def login(self, username: str, password: str, client_addr: str | None,
-                    user_agent: str | None) -> TokenPair | MfaChallenge:
+                    user_agent: str | None, *, remember: bool = False
+                    ) -> TokenPair | MfaChallenge:
         now = self.clock()
         username = username.strip()
         by_email = "@" in username       # self-registered accounts sign in with their e-mail
@@ -194,7 +195,8 @@ class AuthService:
             user = await self.store.update_user(user.user_id, **fields) or user
         if user.totp_enabled:
             return MfaChallenge(make_mfa_token(user.user_id, self.settings.jwt_secret, now))
-        return await self._complete_login(user, client_addr, user_agent, mfa=False)
+        return await self._complete_login(user, client_addr, user_agent, mfa=False,
+                                          remember=remember)
 
     async def _directory_login(self, username: str, password: str, user: UserRecord | None,
                                client_addr: str | None, user_agent: str | None,
@@ -261,7 +263,8 @@ class AuthService:
         return await self._complete_login(user, client_addr, user_agent, mfa=False)
 
     async def verify_mfa(self, mfa_token: str, code: str | None, recovery_code: str | None,
-                         client_addr: str | None, user_agent: str | None) -> TokenPair:
+                         client_addr: str | None, user_agent: str | None, *,
+                         remember: bool = False) -> TokenPair:
         now = self.clock()
         try:
             user_id = decode_mfa_token(mfa_token, self.settings.jwt_secret)
@@ -296,30 +299,36 @@ class AuthService:
             log.warning("%s logged in with a recovery code (%d left)", user.username, len(codes))
         else:
             raise Invalid("code or recovery_code is required", code="invalid")
-        return await self._complete_login(user, client_addr, user_agent, mfa=True)
+        return await self._complete_login(user, client_addr, user_agent, mfa=True,
+                                          remember=remember)
 
     async def _complete_login(self, user: UserRecord, client_addr: str | None,
-                              user_agent: str | None, *, mfa: bool) -> TokenPair:
+                              user_agent: str | None, *, mfa: bool,
+                              remember: bool = False) -> TokenPair:
         now = self.clock()
         await self.store.update_user(user.user_id, failed_logins=0, locked_until=None,
                                      last_login_at=now)
         self.counters["login_ok"] += 1
         await self.store.add_auth_audit("login_ok", user.username, user_id=user.user_id,
                                         client_addr=client_addr, detail={"mfa": mfa})
-        return await self._new_session(user, client_addr, user_agent, mfa=mfa)
+        return await self._new_session(user, client_addr, user_agent, mfa=mfa, remember=remember)
 
     async def _failed(self, user: UserRecord, client_addr: str | None, reason: str) -> None:
         await self.store.add_auth_audit("login_failed", user.username, user_id=user.user_id,
                                         client_addr=client_addr, detail={"reason": reason})
 
     async def _new_session(self, user: UserRecord, client_addr: str | None,
-                           user_agent: str | None, *, mfa: bool) -> TokenPair:
+                           user_agent: str | None, *, mfa: bool,
+                           remember: bool = False) -> TokenPair:
         now = self.clock()
         session_id = uuid.uuid4()
         refresh, refresh_hash = new_refresh_token()
+        # "remember me" (the phone apps, the customer web app): a long session without the idle
+        # limit - the person stays signed in for HUB_REMEMBER_DAYS from the last refresh
+        lifetime = (timedelta(days=self.settings.remember_days) if remember
+                    else timedelta(hours=self.settings.refresh_token_hours))
         await self.store.create_session(
-            session_id, user.user_id, refresh_hash,
-            now + timedelta(hours=self.settings.refresh_token_hours), client_addr,
+            session_id, user.user_id, refresh_hash, now + lifetime, client_addr,
             (user_agent or "")[:300] or None, mfa=mfa)
         access = make_access_token(user.user_id, session_id, self.settings.jwt_secret, now,
                                    self.settings.access_token_minutes)
@@ -328,7 +337,14 @@ class AuthService:
 
     # --- refresh / logout ---------------------------------------------------------------------
 
-    def _idle(self, last_seen: datetime | None, now: datetime) -> bool:
+    def _remembered(self, session: Any) -> bool:
+        """A "remember me" session is the one made with the long lifetime (see _new_session)."""
+        return session.expires_at - session.created_at > timedelta(
+            hours=self.settings.refresh_token_hours + 1)
+
+    def _idle(self, last_seen: datetime | None, now: datetime, session: Any = None) -> bool:
+        if session is not None and self._remembered(session):
+            return False
         return last_seen is not None and now - last_seen > timedelta(
             minutes=self.settings.session_idle_minutes)
 
@@ -348,10 +364,11 @@ class AuthService:
         user = await self.store.get_user(session.user_id)
         if user is None or not user.is_active:
             raise Unauthorized("user disabled", code="invalid_token")
-        if self._idle(session.last_seen_at, now):
+        if self._idle(session.last_seen_at, now, session):
             await self._expire_idle(session.session_id, user.username, user.user_id)
         await self.store.revoke_session(session.session_id)
-        return await self._new_session(user, client_addr, user_agent, mfa=session.mfa)
+        return await self._new_session(user, client_addr, user_agent, mfa=session.mfa,
+                                       remember=self._remembered(session))
 
     async def _expire_idle(self, session_id: Any, username: str, user_id: int) -> None:
         await self.store.revoke_session(session_id)
@@ -378,7 +395,7 @@ class AuthService:
         user = await self.store.get_user(user_id)
         if user is None or not user.is_active:
             raise Unauthorized("user disabled", code="invalid_token")
-        if self._idle(session.last_seen_at, now):
+        if self._idle(session.last_seen_at, now, session):
             await self._expire_idle(session_id, user.username, user_id)
         # the store writes it at most once a minute anyway: no query when it is that recent
         if touch and (session.last_seen_at is None or

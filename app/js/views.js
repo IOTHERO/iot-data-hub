@@ -128,8 +128,30 @@ async function pickHome(list) {
 
 // --- sign-in and account links -------------------------------------------------------------------
 
+/** A new password is required (first sign-in of the default administrator, or after a reset). */
+function forceNewPassword(form, username, current) {
+  const next = field(t("auth.password_new"), { type: "password", autocomplete: "new-password" });
+  const again = field(t("auth.repeat_password"), { type: "password", autocomplete: "new-password" });
+  const submit = h("button", { class: "btn primary block", type: "submit" }, t("auth.change_submit"));
+  const fresh = h("form", { class: "stack" }, h("h2", { class: "h2" }, t("auth.change_title")),
+    h("p", { class: "small muted lh" }, t("auth.change_lead")), next.el, again.el,
+    h("p", { class: "tiny muted lh" }, t("auth.password_rule")), submit);
+  fresh.addEventListener("submit", busy(submit, async () => {
+    if (next.input.value !== again.input.value) { toast(t("auth.passwords_differ"), "err"); return; }
+    await api("POST", "/api/auth/change-password",
+      { current_password: current, new_password: next.input.value });     // ends every session
+    session.store(await api("POST", "/api/auth/login",
+      { username, password: next.input.value, remember: true }, { auth: false }));
+    go(saved.get("app.after") || "#/home");
+    saved.set("app.after", null);
+  }));
+  form.replaceWith(fresh);
+}
+
 export function login(brand = null) {
-  const email = field(t("auth.email"), { type: "email", autocomplete: "username", dir: "ltr" });
+  // text, not email: the first administrator signs in with a user name (admin) in every panel
+  const email = field(t("auth.email"), { type: "text", inputmode: "email", autocomplete: "username",
+    autocapitalize: "none", dir: "ltr" });
   const password = field(t("auth.password"), { type: "password", autocomplete: "current-password" });
   const code = field(t("auth.mfa_code"), { inputmode: "numeric", autocomplete: "one-time-code" });
   code.el.classList.add("hidden");
@@ -146,10 +168,11 @@ export function login(brand = null) {
     let tokens;
     if (mfaToken) {
       tokens = await api("POST", "/api/auth/mfa/verify",
-        { mfa_token: mfaToken, code: code.input.value.trim() }, { auth: false });
+        { mfa_token: mfaToken, code: code.input.value.trim(), remember: remember.checked }, { auth: false });
     } else {
       tokens = await api("POST", "/api/auth/login",
-        { username: email.input.value.trim(), password: password.input.value }, { auth: false });
+        { username: email.input.value.trim(), password: password.input.value,
+          remember: remember.checked }, { auth: false });
       if (tokens.mfa_required) {
         mfaToken = tokens.mfa_token;
         code.el.classList.remove("hidden");
@@ -160,6 +183,10 @@ export function login(brand = null) {
     session.store(tokens);
     saved.set("app.remember", remember.checked ? email.input.value.trim() || kept : null);
     saved.set("app.remember_off", remember.checked ? null : "1");
+    if (tokens.must_change_password) {           // the first administrator: a password of its own
+      forceNewPassword(form, email.input.value.trim(), password.input.value);
+      return;
+    }
     go(saved.get("app.after") || "#/home");
     saved.set("app.after", null);
   }));
@@ -173,7 +200,40 @@ export function login(brand = null) {
     form,
     h("div", { class: "row between" },
       h("a", { href: "#/signup", class: "link" }, t("auth.create")),
-      h("a", { href: "#/forgot", class: "link" }, t("auth.forgot"))));
+      h("a", { href: "#/forgot", class: "link" }, t("auth.forgot"))),
+    h("a", { href: "#/phone", class: "btn block" }, t("auth.phone_login")));
+}
+
+/** Sign in or sign up with a mobile number: a one-time code arrives by SMS. */
+export function phoneLogin() {
+  const phone = field(t("auth.phone"), { type: "tel", inputmode: "numeric", autocomplete: "tel",
+    dir: "ltr", placeholder: "09123456789" });
+  const code = field(t("auth.phone_code"), { inputmode: "numeric", autocomplete: "one-time-code", dir: "ltr" });
+  code.el.classList.add("hidden");
+  const submit = h("button", { class: "btn primary block", type: "submit" }, t("auth.phone_send"));
+  const form = h("form", { class: "stack" }, phone.el, code.el, submit);
+  let sent = false;
+  form.addEventListener("submit", busy(submit, async () => {
+    if (!sent) {
+      await api("POST", "/api/account/phone/code", { phone: phone.input.value.trim() }, { auth: false });
+      sent = true;
+      code.el.classList.remove("hidden");
+      code.input.focus();
+      submit.textContent = t("auth.sign_in");
+      toast(t("auth.phone_sent"), "ok");
+      return;
+    }
+    session.store(await api("POST", "/api/account/phone/verify",
+      { phone: phone.input.value.trim(), code: code.input.value.trim(), remember: true }, { auth: false }));
+    go(saved.get("app.after") || "#/home");
+    saved.set("app.after", null);
+  }));
+  return h("div", { class: "page" },
+    h("div", { class: "hero" }, h("div", { class: "hero-logo" }, brandLogo()),
+      h("h1", { class: "h1" }, t("auth.phone_login")),
+      h("p", { class: "muted" }, t("auth.phone_lead"))),
+    form,
+    h("a", { href: "#/login", class: "link" }, t("auth.back_to_login")));
 }
 
 export function signup(invitation = null) {
@@ -1042,7 +1102,7 @@ function layoutEditor() {
   const box = h("div", { class: "stack layout-edit" },
     h("span", { class: "row" }, icon("sliders"), t("layout.title")),
     h("p", { class: "tiny muted lh" }, t("layout.help")), list,
-    h("button", { type: "button", class: "link small", onclick: () => { setHomeLayout(null); draw(); } },
+    h("button", { type: "button", class: "btn block", onclick: () => { setHomeLayout(null); draw(); } },
       t("layout.reset")));
   const save = () => setHomeLayout([...list.children].map((el) => ({ key: el.dataset.key, on: el.dataset.on === "1" })));
 

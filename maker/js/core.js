@@ -234,7 +234,9 @@ async function refresh() {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: token }),
   }).then(async (r) => {
-    if (!r.ok) { session.clear(); return false; }
+    // only a refusal of the token itself ends the session (not a busy server or a lost network)
+    if (r.status === 401 || r.status === 403) { session.clear(); return false; }
+    if (!r.ok) throw new ApiError(r.status, { error: "refresh_failed" });
     session.store(await r.json());
     return true;
   }).finally(() => { refreshing = null; });

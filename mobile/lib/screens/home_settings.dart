@@ -117,6 +117,32 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
     }
   }
 
+  /// The owner closes a home he made; it must hold no device (the server says so otherwise).
+  Future<void> _delete() async {
+    final s = widget.state;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.t('homeset.delete')),
+        content: Text(s.t('homeset.delete_confirm')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.t('common.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.t('homeset.delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await s.api.call('DELETE', '/api/account/homes/$_org');
+      await s.load();
+      if (mounted) Navigator.of(context).pop();
+    } on ApiError catch (e) {
+      _toast(e.code == 'home_not_empty' ? s.t('homeset.delete_not_empty') : e.message);
+    } catch (e) {
+      _toast('$e');
+    }
+  }
+
   Future<void> _save() async {
     final s = widget.state;
     try {
@@ -249,6 +275,11 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
           Row(children: [_field(_fixed, s.t('homeset.fixed'))]),
         ]),
         WebButton(s.t('common.save'), kind: BtnKind.primary, block: true, onTap: _owner ? _save : null),
+        if (_owner && !_personal) ...[
+          const SizedBox(height: 10),
+          WebButton(s.t('homeset.delete'), icon: Icons.delete_outline_rounded, kind: BtnKind.danger,
+              block: true, onTap: _delete),
+        ],
         const SizedBox(height: 18),
         _card(s.t('auto.holidays'), [
           for (final h in holidays)

@@ -300,22 +300,33 @@ export class ApiError extends Error {
   }
 }
 
-async function refresh() {
+let refreshing = null;
+
+/** One refresh at a time: the refresh token rotates, and a second request with the same token
+ * (several pages and the live stream ask when the access token ends) would look like a stolen
+ * token: the server would end every session of the account. */
+function refresh() {
   const token = saved.get("app.refresh");
   if (!token) return false;
-  let r;
-  try {
-    r = await fetch("/api/auth/refresh", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: token }),
-    });
-  } catch {
-    // no internet: the session is kept (it is not expired, just unreachable)
-    throw new ApiError(0, { error: "network" });
-  }
-  if (!r.ok) { session.clear(); return false; }
-  session.store(await r.json());
-  return true;
+  refreshing = refreshing || (async () => {
+    let r;
+    try {
+      r = await fetch("/api/auth/refresh", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: token }),
+      });
+    } catch {
+      // no internet: the session is kept (it is not expired, just unreachable)
+      throw new ApiError(0, { error: "network" });
+    }
+    // only a refusal of the token itself ends the session; a busy or failing server (429, 5xx)
+    // or a change of network must not sign the person out
+    if (r.status === 401 || r.status === 403) { session.clear(); return false; }
+    if (!r.ok) throw new ApiError(r.status, { error: "refresh_failed" });
+    session.store(await r.json());
+    return true;
+  })().finally(() => { refreshing = null; });
+  return refreshing;
 }
 
 export async function api(method, path, body, { auth = true, retry = true } = {}) {

@@ -17,7 +17,7 @@ state.later = (fn) => {
   if (state.pending) return;
   state.pending = setTimeout(() => { state.pending = null; if (!document.hidden) fn(); }, 800);
 };
-const PUBLIC = new Set(["login", "signup", "forgot", "account"]);
+const PUBLIC = new Set(["login", "phone", "signup", "forgot", "account"]);
 
 // midnight & champagne by default (the design); light only when the user picks it
 const theme = saved.get("app.theme");
@@ -61,6 +61,7 @@ async function render() {
   if (PUBLIC.has(page) && state.stopLive) { state.stopLive(); state.stopLive = null; }
   switch (page) {
     case "login": return show(v.login(state.brand));
+    case "phone": return show(v.phoneLogin());
     case "signup": return show(v.signup());
     case "forgot": return show(v.forgot());
     case "account":

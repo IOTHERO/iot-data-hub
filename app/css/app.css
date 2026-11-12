@@ -14,7 +14,7 @@
   --accent-line: rgba(25,184,208,0.45); --brand-orange: #F58634; --ok: #7FD1C7; --ok-soft: rgba(127,209,199,0.13);
   --warn: #FF9F7A; --warn-soft: rgba(255,159,122,0.13); --violet: #A99BFF;
   --violet-soft: rgba(169,155,255,0.14); --shadow: 0 10px 30px rgba(0,0,0,0.35);
-  --radius: 24px; --font: "Vazirmatn", "Segoe UI", Tahoma, system-ui, sans-serif;
+  --radius: 24px; --font: Arial, "Vazirmatn", "Segoe UI", Tahoma, system-ui, sans-serif;
 }
 :root[data-theme="light"] {
   --bg: #F6F4EF; --bg-2: #FFFFFF; --surface: rgba(20,22,27,0.04);

@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 class LoginIn(BaseModel):
     username: str = Field(min_length=1, max_length=254)     # or the e-mail address
     password: str = Field(min_length=1, max_length=256)
+    remember: bool = False        # a long session (HUB_REMEMBER_DAYS): the apps, "remember me"
 
 
 class RefreshIn(BaseModel):
@@ -64,6 +65,7 @@ class MfaVerifyIn(BaseModel):
     mfa_token: str = Field(min_length=10, max_length=1000)
     code: str | None = Field(default=None, max_length=10)
     recovery_code: str | None = Field(default=None, max_length=20)
+    remember: bool = False
 
 
 class MfaCodeIn(BaseModel):
@@ -85,7 +87,7 @@ async def login(body: LoginIn, request: Request, svc: ServicesDep) -> TokenOut |
     """Password step. With MFA enabled the answer is ``{mfa_required, mfa_token}``: send the
     token with a 6-digit code (or a recovery code) to /api/auth/mfa/verify."""
     result = await svc.auth.login(body.username, body.password, client_addr(request),
-                                  request.headers.get("user-agent"))
+                                  request.headers.get("user-agent"), remember=body.remember)
     if isinstance(result, MfaChallenge):
         return MfaChallengeOut(mfa_token=result.mfa_token, expires_in=result.expires_in)
     return _tokens(result)
@@ -95,7 +97,8 @@ async def login(body: LoginIn, request: Request, svc: ServicesDep) -> TokenOut |
 async def mfa_verify(body: MfaVerifyIn, request: Request, svc: ServicesDep) -> TokenOut:
     return _tokens(await svc.auth.verify_mfa(body.mfa_token, body.code, body.recovery_code,
                                              client_addr(request),
-                                             request.headers.get("user-agent")))
+                                             request.headers.get("user-agent"),
+                                             remember=body.remember))
 
 
 @router.post("/mfa/setup")

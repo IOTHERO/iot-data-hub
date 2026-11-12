@@ -129,6 +129,15 @@ class HomeStore:
                 "UPDATE organizations SET name=%s WHERE org_id=%s AND kind='customer'",
                 (name, org_id))
 
+    async def retire_home(self, org_id: str) -> bool:
+        """Close a home (not a personal one): it disappears from every member's list. The rows
+        stay (history, audit); False if it was not an open, non-personal customer home."""
+        async with self._conn() as conn:
+            cur = await conn.execute(
+                "UPDATE organizations SET retired_at=now() WHERE org_id=%s AND kind='customer' "
+                "AND personal_user_id IS NULL AND retired_at IS NULL", (org_id,))
+            return cur.rowcount == 1
+
     # --- groups -------------------------------------------------------------------------------
 
     async def groups(self, org_ids: Sequence[str]) -> list[GroupRecord]:

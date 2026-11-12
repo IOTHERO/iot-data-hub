@@ -123,15 +123,23 @@ function showLogin() {
   code.el.classList.add("hidden");
   let mfaToken = null;
   const submit = h("button", { class: "btn primary big block", type: "submit" }, t("auth.sign_in"));
-  const form = h("form", { class: "stack" }, user.el, pass.el, code.el, submit);
+  // remember me: the user name stays in this browser (the browser's own manager may keep the
+  // password: the form is a normal one with username / current-password)
+  const kept = saved.get("remember");
+  if (kept) user.input.value = kept;
+  const remember = h("input", { type: "checkbox",
+    checked: kept !== null || saved.get("remember_off") === null });
+  const rememberRow = h("label", { class: "row small" }, remember, h("span", {}, t("auth.remember")));
+  const form = h("form", { class: "stack" }, user.el, pass.el, code.el, rememberRow, submit);
   form.addEventListener("submit", busy(submit, async () => {
     let tokens;
     if (mfaToken) {
       tokens = await api("POST", "/api/auth/mfa/verify",
-        { mfa_token: mfaToken, code: code.input.value.trim() }, { auth: false });
+        { mfa_token: mfaToken, code: code.input.value.trim(), remember: remember.checked }, { auth: false });
     } else {
       tokens = await api("POST", "/api/auth/login",
-        { username: user.input.value.trim(), password: pass.input.value }, { auth: false });
+        { username: user.input.value.trim(), password: pass.input.value,
+          remember: remember.checked }, { auth: false });
       if (tokens.mfa_required) {
         mfaToken = tokens.mfa_token;
         code.el.classList.remove("hidden");
@@ -140,6 +148,12 @@ function showLogin() {
       }
     }
     session.store(tokens);
+    saved.set("remember", remember.checked ? user.input.value.trim() : null);
+    saved.set("remember_off", remember.checked ? null : "1");
+    if (tokens.must_change_password) {          // the first administrator (or a reset): a new one
+      showChangePassword(user.input.value.trim(), pass.input.value);
+      return;
+    }
     ctx.me = null;
     const after = saved.get("after");
     saved.set("after", null);
@@ -156,6 +170,33 @@ function showLogin() {
       await loadLanguage(lang === "fa" ? "en" : "fa");
       render();
     } }, icon("globe"), lang === "fa" ? "English" : "فارسی"))));
+}
+
+/** A new password is required (first sign-in of the default administrator, or a reset). */
+function showChangePassword(username, current) {
+  const field = (label, attrs) => {
+    const id = `f-${Math.random().toString(36).slice(2, 8)}`;
+    const input = h("input", { class: "input", id, type: "password", autocomplete: "new-password", ...attrs });
+    return { input, el: h("div", { class: "field" }, h("label", { for: id }, label), input) };
+  };
+  const next = field(t("auth.new_password"), { required: true, minlength: 10 });
+  const again = field(t("auth.repeat_password"), { required: true });
+  const submit = h("button", { class: "btn primary big block", type: "submit" }, t("auth.change_submit"));
+  const form = h("form", { class: "stack" }, next.el, again.el, submit);
+  form.addEventListener("submit", busy(submit, async () => {
+    if (next.input.value !== again.input.value) { toast(t("auth.passwords_differ"), "err"); return; }
+    await api("POST", "/api/auth/change-password",
+      { current_password: current, new_password: next.input.value });   // ends every session
+    session.store(await api("POST", "/api/auth/login",
+      { username, password: next.input.value, remember: saved.get("remember_off") === null }, { auth: false }));
+    ctx.me = null;
+    location.hash = "#/dashboard";
+    render();
+  }));
+  root.replaceChildren(h("div", { class: "auth" }, h("div", { class: "card" },
+    h("div", { class: "auth-logo" }, brandLogo()),
+    h("h1", { class: "h1" }, t("auth.change_title")),
+    h("p", { class: "small muted lh" }, t("auth.change_lead")), form)));
 }
 
 function showNoOrg() {

@@ -34,6 +34,7 @@ else
     read -r -p "Public domain: e-mail for Let's Encrypt (empty = the deploy/ca certificate): " mail || true
     [ -n "${mail:-}" ] && tls="$mail"
   fi
+  admin_pass="$(rand 14)Aa7"
   sed -e "s|^PUBLIC_HOST=.*|PUBLIC_HOST=${public_host}|" \
       -e "s|^DEFAULT_SNI=.*|DEFAULT_SNI=${first}|" \
       -e "s|^CADDY_TLS=.*|CADDY_TLS=${tls}|" \
@@ -44,9 +45,14 @@ else
       -e "s|^EMQX_DASHBOARD_PASSWORD=.*|EMQX_DASHBOARD_PASSWORD=$(rand 24)|" \
       -e "s|^HUB_BROKER_HOOK_TOKEN=.*|HUB_BROKER_HOOK_TOKEN=$(rand 40)|" \
       -e "s|^HUB_PLATFORM_MQTT_PASSWORD=.*|HUB_PLATFORM_MQTT_PASSWORD=$(rand 32)|" \
+      -e "s|^HUB_BOOTSTRAP_ADMIN_PASSWORD=.*|HUB_BOOTSTRAP_ADMIN_PASSWORD=${admin_pass}|" \
       .env.example > .env
   chmod 600 .env
   echo "wrote .env (random secrets; PUBLIC_HOST=${public_host}, CADDY_TLS=${tls})"
+  echo
+  echo "FIRST SIGN-IN (shown once; it is also in .env until you delete the line):"
+  echo "    user: admin      password: ${admin_pass}"
+  echo "    the same account opens /  /maker/  /app/  - a new password is required at once"
 fi
 
 # --- device CA and server certificate ----------------------------------------------------------
@@ -79,5 +85,4 @@ echo "device certificate for: ${san}"
 echo "SHA-256 fingerprint (compare in the app): $(openssl x509 -in certs/server.crt -noout -fingerprint -sha256 | cut -d= -f2)"
 echo
 echo "next:  docker compose up -d --build"
-echo "       docker compose exec hub hub-admin create-admin --username admin"
-echo "       docker compose exec hub hub-admin create-customer --email you@example.com --display-name You"
+echo "then sign in with the first account above (no terminal account needed)."

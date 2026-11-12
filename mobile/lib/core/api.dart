@@ -29,6 +29,7 @@ class Api {
   final LocalControl local;
   final ValueNotifier<bool> offline = ValueNotifier(false);   // working from the phone's copy
   String? _access;
+  bool mustChangePassword = false;           // the last sign-in asked for a new password
 
   static const _cached = ['/api/auth/me', '/api/account/organizations', '/api/platform/my/'];
 
@@ -68,18 +69,25 @@ class Api {
   }
 
   /// Sign in; returns an MFA token when the account asks for a second step (then [verifyMfa]).
-  Future<String?> login(String user, String password) async {
-    final r = await _send('POST', '/api/auth/login', {'username': user, 'password': password}, auth: false)
-        as Map<String, dynamic>;
+  Future<String?> login(String user, String password, {bool remember = true}) async {
+    // remember: the phone keeps the session for months (HUB_REMEMBER_DAYS) - it is the person's own
+    final r = await _send('POST', '/api/auth/login',
+        {'username': user, 'password': password, 'remember': remember}, auth: false) as Map<String, dynamic>;
     if (r['mfa_required'] == true) return r['mfa_token'] as String;
     await _keep(r);
     return null;
   }
 
   /// The second step: the 6-digit code of the authenticator app (or a recovery code).
-  Future<void> verifyMfa(String mfaToken, String code) async {
-    await _keep(await _send('POST', '/api/auth/mfa/verify', {'mfa_token': mfaToken, 'code': code}, auth: false)
-        as Map<String, dynamic>);
+  Future<void> verifyMfa(String mfaToken, String code, {bool remember = true}) async {
+    await _keep(await _send('POST', '/api/auth/mfa/verify',
+        {'mfa_token': mfaToken, 'code': code, 'remember': remember}, auth: false) as Map<String, dynamic>);
+  }
+
+  /// Sign-in with a mobile number: the SMS code asked earlier (POST /api/account/phone/code).
+  Future<void> verifyPhone(String phone, String code) async {
+    await _keep(await _send('POST', '/api/account/phone/verify',
+        {'phone': phone, 'code': code, 'remember': true}, auth: false) as Map<String, dynamic>);
   }
 
   /// Account requests that need no sign-in (sign-up, forgotten password, e-mail links).
@@ -110,10 +118,18 @@ class Api {
 
   Future<void> _keep(Map<String, dynamic> tokens) async {
     _access = tokens['access_token'] as String?;
+    mustChangePassword = tokens['must_change_password'] == true;
     await store.setSecret('refresh', tokens['refresh_token'] as String?);
   }
 
-  Future<bool> _refresh() async {
+  Future<bool>? _refreshing;
+
+  /// One refresh at a time: the refresh token rotates, so a second request with the same token
+  /// (the home page, the live stream and the alerts all ask when the access token ends) would
+  /// look like a stolen token and the server would end every session of the account.
+  Future<bool> _refresh() => _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
+
+  Future<bool> _doRefresh() async {
     final token = await store.secret('refresh');
     if (token == null) return false;
     try {
@@ -121,7 +137,9 @@ class Api {
           as Map<String, dynamic>);
       return true;
     } on ApiError catch (e) {
-      if (e.status == 0) rethrow;                 // no network: the session is kept
+      // only a refusal of the token itself ends the session; no network, a busy or failing
+      // server (429, 5xx) or a switch between Wi-Fi and mobile data must never sign the user out
+      if (e.status != 401 && e.status != 403) rethrow;
       _access = null;
       await store.setSecret('refresh', null);
       return false;

@@ -1,7 +1,10 @@
 // The hub address, asked on first start (and from the sign-in page to change it).
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../core/api.dart';
 import '../core/app_state.dart';
@@ -24,26 +27,53 @@ class _ServerScreenState extends State<ServerScreen> {
   String? _error;
 
   bool _busy = false;
+  String? _ok;                       // the test found the server: its answer, in words
 
-  Future<void> _save() async {
+  /// Keep the address and, for a hub with its own certificate, show it once and let the user
+  /// approve it (core/tls.dart). False when the user refused.
+  Future<bool> _prepare() async {
     final s = widget.state;
     final url = _url.text.trim();
     if (!Api.allowedServer(url)) {
-      setState(() => _error = s.t('mobile.server_bad'));
-      return;
+      setState(() { _error = s.t('mobile.server_bad'); _ok = null; });
+      return false;
     }
-    setState(() { _busy = true; _error = null; });
-    try {
-      await s.api.setServer(url);
-      if (!kIsWeb) {
-        // a hub with its own certificate: show it once and let the user approve it (core/tls.dart)
-        final untrusted = await checkServer(Uri.parse(s.api.server), s.trusted);
-        if (untrusted != null) {
-          if (!mounted || !await _approve(untrusted)) return;
-          await s.trusted.approve(untrusted.host, untrusted.port, untrusted.print);
-        }
+    await s.api.setServer(url);
+    if (!kIsWeb) {
+      final untrusted = await checkServer(Uri.parse(s.api.server), s.trusted);
+      if (untrusted != null) {
+        if (!mounted || !await _approve(untrusted)) return false;
+        await s.trusted.approve(untrusted.host, untrusted.port, untrusted.print);
       }
-      widget.done();
+    }
+    return true;
+  }
+
+  /// "Test the server": ask its health answer and say whether the app can use it.
+  Future<void> _test() async {
+    final s = widget.state;
+    setState(() { _busy = true; _error = null; _ok = null; });
+    try {
+      if (!await _prepare()) return;
+      final r = await http.get(Uri.parse('${s.api.server}/api/health')).timeout(const Duration(seconds: 10));
+      final data = r.statusCode == 200 ? json.decode(utf8.decode(r.bodyBytes)) : null;
+      if (data is Map && data['status'] == 'ok') {
+        if (mounted) setState(() => _ok = s.t('mobile.server_ok', {'version': '${data['version'] ?? ''}'}));
+      } else if (mounted) {
+        setState(() => _error = s.t('mobile.server_not_hub'));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = s.t('mobile.server_unreachable', {'error': '$e'}));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final s = widget.state;
+    setState(() { _busy = true; _error = null; _ok = null; });
+    try {
+      if (await _prepare()) widget.done();
     } catch (e) {
       if (mounted) setState(() => _error = s.t('mobile.server_unreachable', {'error': '$e'}));
     } finally {
@@ -100,6 +130,20 @@ class _ServerScreenState extends State<ServerScreen> {
             decoration: InputDecoration(hintText: 'https://', hintTextDirection: TextDirection.ltr, errorText: _error),
           ),
           const SizedBox(height: 20),
+          if (_ok != null) ...[
+            Row(children: [
+              Icon(Icons.check_circle_rounded, color: Tk.of(context).ok),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_ok!, style: TextStyle(color: Tk.of(context).ok))),
+            ]),
+            const SizedBox(height: 12),
+          ],
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _test,
+            icon: const Icon(Icons.wifi_tethering_rounded),
+            label: Text(s.t('mobile.test_server')),
+          ),
+          const SizedBox(height: 10),
           FilledButton(
             onPressed: _busy ? null : _save,
             child: _busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4))

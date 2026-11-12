@@ -55,7 +55,7 @@
   --radius: 8px;
   --radius-sm: 5px;
 
-  --font-ui: "Vazirmatn", "Segoe UI", Tahoma, "Noto Sans Arabic", system-ui, sans-serif;
+  --font-ui: Arial, "Vazirmatn", "Segoe UI", Tahoma, "Noto Sans Arabic", system-ui, sans-serif;
   --font-data: "Cascadia Mono", Consolas, "DejaVu Sans Mono", "Courier New", monospace;
   --nav-w: 232px;
   --top-h: 56px;

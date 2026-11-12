@@ -170,7 +170,7 @@ export default async function production(args) {
   }
 
   // --- devices --------------------------------------------------------------------------------
-  let filter = "";
+  let filter = FILTERS.some(([v]) => v === args[1]) ? args[1] : "";
   let offset = 0;
   const limit = 50;
   const search = h("input", { class: "search", type: "search", placeholder: t("production.search"),
@@ -205,6 +205,22 @@ export default async function production(args) {
   });
   await drawDevices();
 
+  // the cards count the stages and open them: a click filters the devices below
+  const tilesBox = h("div", { class: "tiles" });
+  const tableCard = h("section", { class: "card", "aria-label": t("production.devices") });
+  const drawTiles = () => tilesBox.replaceChildren(
+    ...[["", t("stage.registered"), stats.total, ""],
+      ["stock", t("stage.ready"), life.ready + life.registered, ""],
+      ["sold", t("stage.sold"), life.sold, ""],
+      ["active", t("stage.active"), life.active, "hot"]].map(([value, label, n, kind]) =>
+      tile(label, num(n), kind, null, () => {
+        filter = value; offset = 0;
+        drawTiles();
+        drawDevices().then(() => tableCard.scrollIntoView({ behavior: "smooth", block: "start" }));
+      }, filter === value)),
+    tile(t("stage.online"), num(stats.online), "teal"));
+  drawTiles();
+
   const sample = labelCard(product, identifierAt(product.identifier_pattern, Number(start.value) || 1),
     null, null);
   const printBtn = h("button", { class: "btn soft sm", disabled: !register }, icon("print"), t("labels.print"));
@@ -217,22 +233,17 @@ export default async function production(args) {
       h("div", { class: "stack tight" }, h("h1", { class: "h1" }, t("menu.production")),
         h("div", { class: "row wrap small muted" }, choose)),
       h("div", { class: "row wrap" }, importBtn, csvInput, exportBtn, listBtn)),
-    h("div", { class: "tiles" },
-      tile(t("stage.registered"), num(stats.total)),
-      tile(t("stage.ready"), num(life.ready + life.registered)),
-      tile(t("stage.sold"), num(life.sold)),
-      tile(t("stage.active"), num(life.active), "hot"),
-      tile(t("stage.online"), num(stats.online), "teal")),
+    tilesBox,
     h("div", { class: "columns" }, h("div", { class: "col-form stack loose" }, form, stageCard()),
       h("div", { class: "col-main" },
-        h("section", { class: "card", "aria-label": t("production.devices") },
+        (tableCard.replaceChildren(
           h("div", { class: "bar" }, h("label", { class: "sr", for: "dev-search" }, t("production.search")),
             Object.assign(search, { id: "dev-search" }), filters),
           h("div", { class: "scroll" }, h("table", { class: "grid mid" },
             h("thead", {}, h("tr", {}, ["id", "serial", "status", "conn", "fw", "warranty", "owner"]
               .map((c) => h("th", {}, t(`production.col_${c}`))))), tbody)),
           pagerBox,
-          h("div", { class: "foot-note" }, t("production.privacy"))),
+          h("div", { class: "foot-note" }, t("production.privacy"))), tableCard),
         h("section", { class: "card pad-lg", "aria-label": t("labels.preview") },
           h("div", { class: "row wrap top" }, sample,
             h("div", { class: "stack grow" }, h("span", { class: "h3" }, t("labels.qr_title")),

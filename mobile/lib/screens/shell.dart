@@ -174,7 +174,7 @@ class _Dock extends StatelessWidget {
                 return Stack(children: [
                   AnimatedPositionedDirectional(                       // the lit pill slides
                     duration: const Duration(milliseconds: 550),
-                    curve: const Cubic(.34, 1.4, .5, 1),
+                    curve: Curves.easeOutCubic,       // no overshoot: the pill never leaves the glass
                     start: w * slot, top: 0, bottom: 0, width: w,
                     child: Container(
                       decoration: BoxDecoration(

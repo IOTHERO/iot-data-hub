@@ -24,7 +24,14 @@
     "password": "Password",
     "mfa_code": "Two-step sign-in code",
     "sign_in": "Sign in",
-    "lead": "Define products, register devices, labels, warranty and support."
+    "lead": "Define products, register devices, labels, warranty and support.",
+    "remember": "Remember me",
+    "change_title": "Set a new password",
+    "change_lead": "This is the first sign-in of this account. Set a password of your own to continue (at least 10 characters).",
+    "new_password": "New password",
+    "repeat_password": "Repeat the new password",
+    "change_submit": "Save and continue",
+    "passwords_differ": "The two passwords differ"
   },
   "common": {
     "loading": "Loading…",
@@ -560,7 +567,14 @@
     "col_product": "Product",
     "col_activated": "Activated",
     "col_until": "Ends",
-    "col_status": "Status"
+    "col_status": "Status",
+    "f_soon_expired": "Needs attention",
+    "f_covered": "Covered",
+    "f_soon": "Ending soon",
+    "f_expired": "Expired",
+    "f_none": "No warranty",
+    "f_not_started": "Not started",
+    "f_all": "All"
   },
   "support": {
     "subtitle": "Look a device up by identifier or serial and solve its problem",

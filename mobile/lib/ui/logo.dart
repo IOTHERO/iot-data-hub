@@ -20,7 +20,7 @@ class LogoMark extends StatelessWidget {
     final ink = Theme.of(context).colorScheme.onSurface;
     return SizedBox(
       width: size,
-      height: size * (wordmark ? 1560 / 1150 : 1120 / 1100),
+      height: size * (wordmark ? 1680 / 1150 : 1120 / 1100),
       child: CustomPaint(painter: _LogoPainter(progress, wordmark, ink)),
     );
   }
@@ -73,10 +73,10 @@ class _LogoPainter extends CustomPainter {
     // 4. the name rises
     if (wordmark) {
       final rise = Curves.easeOut.transform(_phase(t, 0.56, 0.3));
-      _text(canvas, 'تی‌تی‌سویچ', 1500 + 60 * (1 - rise), 250, FontWeight.w900, ink.withValues(alpha: 0.78 * rise),
+      _text(canvas, 'تی‌تی‌ سوئیچ', 1500 + 60 * (1 - rise), 250, FontWeight.w900, ink.withValues(alpha: 0.78 * rise),
           TextDirection.rtl, 0);
       final track = _phase(t, 0.65, 0.35);
-      _text(canvas, 'TiTiSwitch', 1680, 150, FontWeight.w600, ink.withValues(alpha: 0.6 * track), TextDirection.ltr,
+      _text(canvas, 'TiTiSwitch', 1790, 150, FontWeight.w600, ink.withValues(alpha: 0.6 * track), TextDirection.ltr,
           22 + 62 * (1 - Curves.easeOut.transform(track)));
     }
   }

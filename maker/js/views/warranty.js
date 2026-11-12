@@ -36,9 +36,6 @@ export default async function warranty() {
     const s = status(d, now);
     if (s in counts) counts[s] += 1;
   }
-  const soon = devices.filter((d) => ["soon", "expired"].includes(status(d, now)))
-    .sort((a, b) => new Date(a.warranty_until) - new Date(b.warranty_until)).slice(0, 100);
-
   const query = h("input", { class: "search", type: "search", placeholder: t("warranty.lookup_placeholder"),
     "aria-label": t("warranty.lookup"), dir: "ltr" });
   const result = h("div", { class: "stack" });
@@ -63,28 +60,53 @@ export default async function warranty() {
   go.addEventListener("click", lookup);
   query.addEventListener("keydown", (ev) => { if (ev.key === "Enter") lookup(ev); });
 
+  // the cards open their devices in the table below; the chips above the table filter the same way
+  let pick = "attention";
+  const tilesBox = h("div", { class: "tiles" });
+  const chips = h("div", { class: "filters" });
+  const tbody = h("tbody");
+  const FILTERS = [["attention", "soon_expired"], ["covered", "covered"], ["soon", "soon"],
+    ["expired", "expired"], ["none", "none"], ["not_started", "not_started"], ["all", "all"]];
+  const matches = (d) => {
+    const s = status(d, now);
+    if (pick === "all") return true;
+    if (pick === "attention") return s === "soon" || s === "expired";
+    if (pick === "covered") return s === "covered" || s === "soon";
+    return s === pick;
+  };
+  const byEnd = (a, b) => new Date(a.warranty_until || 0) - new Date(b.warranty_until || 0);
+  function draw() {
+    const shown = devices.filter(matches).sort(byEnd).slice(0, 200);
+    const open = (key) => () => { pick = key; draw(); };
+    tilesBox.replaceChildren(
+      tile(t("warranty.covered"), num(counts.covered + counts.soon), "teal", null, open("covered"), pick === "covered"),
+      tile(t("warranty.soon"), num(counts.soon), counts.soon ? "orange" : "", null, open("soon"), pick === "soon"),
+      tile(t("warranty.expired"), num(counts.expired), "", null, open("expired"), pick === "expired"),
+      tile(t("warranty.no_warranty"), num(counts.none), "", null, open("none"), pick === "none"));
+    chips.replaceChildren(...FILTERS.map(([key, label]) => h("button", {
+      class: `filter ${pick === key ? "on" : ""}`, onclick: open(key) }, t(`warranty.f_${label}`))));
+    tbody.replaceChildren(...(shown.length ? shown.map((d) => {
+      const s = status(d, now);
+      return h("tr", { class: "click", onclick: () => { location.hash = `#/device/${d.device_id}`; } },
+        h("td", { class: "id ltr" }, d.identifier),
+        h("td", {}, names.get(d.product_id) || d.product_code),
+        h("td", { class: "sub" }, date(d.activated_at)),
+        h("td", { class: "sub" }, d.warranty_until ? date(d.warranty_until) : "—"),
+        h("td", {}, h("span", { class: `chip sm ${STATUS_CHIP[s]}` }, t(`warranty.state_${s}`))));
+    }) : [h("tr", {}, h("td", { colspan: 5, class: "muted" }, t("warranty.none_ending")))]));
+  }
+  draw();
+
   return h("div", { class: "stack loose" },
     pageHead(t("menu.warranty"), t("warranty.subtitle")),
-    h("div", { class: "tiles" },
-      tile(t("warranty.covered"), num(counts.covered + counts.soon), "teal"),
-      tile(t("warranty.soon"), num(counts.soon), counts.soon ? "orange" : ""),
-      tile(t("warranty.expired"), num(counts.expired)),
-      tile(t("warranty.no_warranty"), num(counts.none))),
+    tilesBox,
     h("div", { class: "columns" },
       h("section", { class: "card col-main" },
-        h("div", { class: "bar" }, h("span", { class: "h3" }, t("warranty.ending"))),
+        h("div", { class: "bar" }, h("span", { class: "h3" }, t("warranty.ending")), chips),
         h("div", { class: "scroll" }, h("table", { class: "grid mid" },
           h("thead", {}, h("tr", {}, ["id", "product", "activated", "until", "status"].map((c) =>
             h("th", {}, t(`warranty.col_${c}`))))),
-          h("tbody", {}, soon.length ? soon.map((d) => {
-            const s = status(d, now);
-            return h("tr", { class: "click", onclick: () => { location.hash = `#/device/${d.device_id}`; } },
-              h("td", { class: "id ltr" }, d.identifier),
-              h("td", {}, names.get(d.product_id) || d.product_code),
-              h("td", { class: "sub" }, date(d.activated_at)),
-              h("td", { class: "sub" }, date(d.warranty_until)),
-              h("td", {}, h("span", { class: `chip sm ${STATUS_CHIP[s]}` }, t(`warranty.state_${s}`))));
-          }) : [h("tr", {}, h("td", { colspan: 5, class: "muted" }, t("warranty.none_ending")))]))),
+          tbody)),
         h("div", { class: "foot-note" }, t("warranty.footnote"))),
       h("aside", { class: "col-side" }, h("section", { class: "card pad" },
         h("span", { class: "h3" }, t("warranty.lookup")),

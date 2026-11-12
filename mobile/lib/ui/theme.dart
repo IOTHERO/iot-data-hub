@@ -64,14 +64,14 @@ ThemeData buildTheme(Brightness brightness, [String accentKey = '']) {
           states.contains(WidgetState.dragged) ? accent : line2),
     ),
     dividerColor: line,
-    fontFamily: 'Vazirmatn',
-    fontFamilyFallback: const ['Tahoma', 'Roboto'],
+    fontFamily: 'Arial',
+    fontFamilyFallback: const ['Vazirmatn', 'Tahoma'],
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       foregroundColor: text,
       elevation: 0,
-      titleTextStyle: TextStyle(fontFamily: 'Vazirmatn', fontSize: 18, fontWeight: FontWeight.w800, color: text),
+      titleTextStyle: TextStyle(fontFamily: 'Arial', fontSize: 18, fontWeight: FontWeight.w800, color: text),
     ),
     cardTheme: CardThemeData(
       elevation: 0,
@@ -97,7 +97,7 @@ ThemeData buildTheme(Brightness brightness, [String accentKey = '']) {
         backgroundColor: accent,
         foregroundColor: dark ? Brand.bg : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: radius16),
-        textStyle: const TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w700, fontSize: 15),
+        textStyle: const TextStyle(fontFamily: 'Arial', fontWeight: FontWeight.w700, fontSize: 15),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(            // .btn
@@ -121,7 +121,7 @@ ThemeData buildTheme(Brightness brightness, [String accentKey = '']) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: dark ? const Color(0xFF1A1E26) : const Color(0xFF15171C),
-      contentTextStyle: const TextStyle(fontFamily: 'Vazirmatn', color: Color(0xFFF2F2F4)),
+      contentTextStyle: const TextStyle(fontFamily: 'Arial', color: Color(0xFFF2F2F4)),
       shape: RoundedRectangleBorder(borderRadius: radius16),
     ),
   );

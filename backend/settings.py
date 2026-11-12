@@ -63,6 +63,7 @@ class Settings(BaseModel):
     jwt_secret: str = Field(min_length=32)
     access_token_minutes: int = Field(default=15, ge=1, le=240)
     refresh_token_hours: int = Field(default=12, ge=1, le=24 * 30)
+    remember_days: int = Field(default=90, ge=1, le=365)     # a "remember me" session
     control_enabled: bool = False
     login_max_failures: int = Field(default=5, ge=1, le=100)
     lockout_minutes: int = Field(default=15, ge=1, le=24 * 60)
@@ -137,6 +138,15 @@ class Settings(BaseModel):
     spool_max_mb: int = Field(default=1024, ge=10, le=1_000_000)
     # self-service accounts (platform phase 2): off by default; invitations work regardless
     signup_enabled: bool = False
+    # sign-up: "on" = the address must be confirmed by an e-mailed link, "off" = accounts work at
+    # once, "auto" = "on" when an SMTP server is set, else "off" (a hub that cannot send e-mail
+    # would otherwise leave every new customer waiting for a link that never comes)
+    email_verification: Literal["auto", "on", "off"] = "auto"
+    # the first administrator, made on the first start of an empty database (backend/bootstrap.py)
+    bootstrap_admin_username: str = "admin"
+    bootstrap_admin_password: str | None = None
+    bootstrap_maker_org: str = Field(default="titiswitch", pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    bootstrap_maker_name: str = "TiTiSwitch"
     public_url: str | None = None               # base of the links in e-mails
     smtp_host: str | None = None                # unset: e-mails are not sent (logged only)
     smtp_port: int = Field(default=587, ge=1, le=65535)
@@ -227,6 +237,12 @@ class Settings(BaseModel):
     def tls(self) -> bool:
         return self.tls_cert_file is not None and self.tls_key_file is not None
 
+    @property
+    def verify_email_required(self) -> bool:
+        if self.email_verification == "auto":
+            return self.smtp_host is not None
+        return self.email_verification == "on"
+
     @field_validator("timezone")
     @classmethod
     def _check_timezone(cls, value: str) -> str:
@@ -279,6 +295,7 @@ class Settings(BaseModel):
             jwt_secret=secret,
             access_token_minutes=int(e.get("HUB_ACCESS_TOKEN_MINUTES", 15)),
             refresh_token_hours=int(e.get("HUB_REFRESH_TOKEN_HOURS", 12)),
+            remember_days=int(e.get("HUB_REMEMBER_DAYS", 90)),
             control_enabled=_bool(e.get("HUB_CONTROL_ENABLED"), False),
             login_max_failures=int(e.get("HUB_LOGIN_MAX_FAILURES", 5)),
             lockout_minutes=int(e.get("HUB_LOCKOUT_MINUTES", 15)),
@@ -339,6 +356,11 @@ class Settings(BaseModel):
             spool_dir=_spool_dir(e.get("HUB_SPOOL_DIR")),
             spool_max_mb=int(e.get("HUB_SPOOL_MAX_MB", 1024)),
             signup_enabled=_bool(e.get("HUB_SIGNUP_ENABLED"), False),
+            email_verification=e.get("HUB_EMAIL_VERIFICATION") or "auto",  # type: ignore[arg-type]
+            bootstrap_admin_username=e.get("HUB_BOOTSTRAP_ADMIN_USER") or "admin",
+            bootstrap_admin_password=e.get("HUB_BOOTSTRAP_ADMIN_PASSWORD") or None,
+            bootstrap_maker_org=e.get("HUB_BOOTSTRAP_MAKER_ORG") or "titiswitch",
+            bootstrap_maker_name=e.get("HUB_BOOTSTRAP_MAKER_NAME") or "TiTiSwitch",
             public_url=(e.get("HUB_PUBLIC_URL") or "").rstrip("/") or None,
             smtp_host=e.get("HUB_SMTP_HOST") or None,
             smtp_port=int(e.get("HUB_SMTP_PORT", 587)),

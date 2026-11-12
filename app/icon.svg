@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- TiTiSwitch mark on a white tile (same geometry as js/logo.js) -->
-  <rect width="512" height="512" rx="112" fill="#FFFFFF"/>
+  <!-- TiTiSwitch mark on a transparent background (same geometry as js/logo.js) -->
   <g transform="translate(-57 1) scale(0.33)">
     <path d="M1199 327.5H499.5V554.5H726.5V1006H953.5V554.5H1180.5V1006H1444.5V1233H702" fill="none" stroke="#00B4CD" stroke-width="37"/>
     <rect x="783" y="529" width="112" height="279" rx="56" fill="#F58634"/><circle cx="839" cy="600" r="28" fill="#FFFFFF"/>

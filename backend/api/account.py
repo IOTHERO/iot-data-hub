@@ -21,6 +21,30 @@ router = APIRouter(prefix="/api/account", tags=["account"])
 Me = Annotated[Principal, Depends(require("self"))]
 
 
+class PhoneCodeIn(BaseModel):
+    phone: str = Field(min_length=7, max_length=20)
+
+
+class PhoneVerifyIn(PhoneCodeIn):
+    code: str = Field(min_length=4, max_length=8)
+    remember: bool = True
+
+
+@router.post("/phone/code", status_code=202)
+async def phone_code(body: PhoneCodeIn, svc: ServicesDep, request: Request) -> dict[str, Any]:
+    """Sign in or sign up with a mobile number: a one-time code is sent by SMS."""
+    return await svc.accounts.request_phone_code(body.phone, client_addr(request))
+
+
+@router.post("/phone/verify")
+async def phone_verify(body: PhoneVerifyIn, svc: ServicesDep, request: Request) -> dict[str, Any]:
+    from backend.api.auth import _tokens
+    pair = await svc.accounts.verify_phone_code(
+        body.phone, body.code, client_addr(request), request.headers.get("user-agent"),
+        body.remember)
+    return _tokens(pair).model_dump()
+
+
 class SignupIn(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
