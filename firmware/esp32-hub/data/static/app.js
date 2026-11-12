@@ -16,7 +16,7 @@ tTime:"زمانی",tInterval:"تکرارشونده",tValue:"بر اساس مقد
 tplEveningOn:"روشن شدن چراغ در ساعت مشخص",tplNightOff:"خاموش کردن همه در ساعت مشخص",tplPulse:"تکرار: ۲۰ ثانیه روشن، ۴۰ ثانیه خاموش",tplOfflineSms:"پیامک وقتی ماژول قطع شد",tplCloudLost:"اقدام هنگام قطع اینترنت",tplAllOff:"دستی: خاموش‌کردن چند رله",
 lan:"شبکهٔ LAN (W5500)",netMode:"اولویت شبکه",nm0:"اول LAN، وای‌فای پشتیبان",nm1:"اول وای‌فای",nm2:"فقط LAN",nm3:"فقط وای‌فای",dhcp:"دریافت خودکار IP (DHCP)",subnet:"Subnet",gateway:"گیت‌وی",hostname:"نام میزبان",
 wifiNet:"شبکهٔ وای‌فای",scan:"جستجو",scanning:"در حال جستجو…",noNets:"شبکه‌ای پیدا نشد",ssid:"نام شبکه (SSID)",password:"رمز",backupNet:"شبکهٔ پشتیبان (اختیاری)",savedPass:"•••••• (ذخیره شده — برای تغییر بنویسید)",
-server:"سرور (OPC / پلتفرم)",serverSub:"هاب خودش را با این شناسه به سرور معرفی می‌کند و پیام ماژول‌ها را می‌رساند. خالی یا غیرفعال: هاب تنها در شبکهٔ محلی کار می‌کند.",srvEnabled:"اتصال به سرور فعال",tls:"اتصال امن (TLS، گواهی همیشه بررسی می‌شود)",caPem:"گواهی CA اختصاصی (PEM، اختیاری؛ خالی = CAهای عمومی داخلی)",clearCa:"پاک کردن گواهی",hubId:"شناسهٔ هاب (Hub ID)",hubSecret:"رمز هاب",host:"آدرس سرور",port:"پورت",prefix:"پیشوند تاپیک",keepalive:"Keepalive (ثانیه)",lostAlarm:"هشدار قطع سرور بعد از (ثانیه، ۰ = بدون هشدار)",
+server:"سرور (OPC / پلتفرم)",serverSub:"هاب خودش را با این شناسه به سرور معرفی می‌کند و پیام ماژول‌ها را می‌رساند. خالی یا غیرفعال: هاب تنها در شبکهٔ محلی کار می‌کند.",srvEnabled:"اتصال به سرور فعال",smsLang:"زبان پیامک هشدار",smsLangEn:"انگلیسی (۱۶۰ نویسه)",smsLangFa:"فارسی (۷۰ نویسه)",holidays:"تعطیلات اضافه (قمری و خاص؛ هر خط یک تاریخ شمسی)",holidaysHelp:"تعطیلات ثابت شمسی (نوروز، ۱۲ و ۱۳ فروردین، ۱۴ و ۱۵ خرداد، ۲۲ بهمن، ۲۹ اسفند) داخل هاب هست. تعطیلات قمری هر سال را اینجا یا از سرور وارد کنید. سناریو با «calendar.holidays» آن‌ها را رد یا فقط همان روزها را اجرا می‌کند.",tplWorkdays:"فقط روزهای کاری (بدون تعطیلات)، ماه‌های مهر تا اسفند",tls:"اتصال امن (TLS، گواهی همیشه بررسی می‌شود)",caPem:"گواهی CA اختصاصی (PEM، اختیاری؛ خالی = CAهای عمومی داخلی)",clearCa:"پاک کردن گواهی",hubId:"شناسهٔ هاب (Hub ID)",hubSecret:"رمز هاب",host:"آدرس سرور",port:"پورت",prefix:"پیشوند تاپیک",keepalive:"Keepalive (ثانیه)",lostAlarm:"هشدار قطع سرور بعد از (ثانیه، ۰ = بدون هشدار)",
 modBroker:"سرور محلی ماژول‌ها",modBrokerSub:"ماژول‌ها «سرور» خود را روی آدرس این هاب و همین پورت تنظیم می‌کنند.",offlineS:"قطع‌شدن ماژول بعد از (ثانیه)",
 phoneApi:"کنترل از گوشی (شبکهٔ محلی)",phoneApiSub:"اپ فلاتر با کلید امضا مستقیم به هاب وصل می‌شود؛ بدون اینترنت هم کار می‌کند.",localEnabled:"کنترل محلی فعال",showKeys:"نمایش کلیدها",newKey:"کلید تازهٔ گوشی",keyNote:"کلید گوشی و کلید پیامک را فقط در اپ مدیر وارد کنید.",
 ntp:"سرور زمان (NTP)",utcOffset:"اختلاف از UTC (دقیقه؛ ایران ۲۱۰)",
@@ -48,7 +48,7 @@ tTime:"Time",tInterval:"Repeating",tValue:"On value",tEvent:"Event",tManual:"Man
 tplEveningOn:"Light on at a set time",tplNightOff:"Everything off at a set time",tplPulse:"Repeat: 20 s on, 40 s off",tplOfflineSms:"SMS when a module goes offline",tplCloudLost:"Action when the internet is lost",tplAllOff:"Manual: switch several relays off",
 lan:"LAN (W5500)",netMode:"Network priority",nm0:"LAN first, Wi-Fi backup",nm1:"Wi-Fi first",nm2:"LAN only",nm3:"Wi-Fi only",dhcp:"Automatic IP (DHCP)",subnet:"Subnet",gateway:"Gateway",hostname:"Host name",
 wifiNet:"Wi-Fi network",scan:"Scan",scanning:"Scanning…",noNets:"No networks found",ssid:"Network (SSID)",password:"Password",backupNet:"Backup network (optional)",savedPass:"•••••• (saved — type to change)",
-server:"Server (OPC / platform)",serverSub:"The hub introduces itself to the server with this id and carries the modules' messages. Off or empty: the hub works on the local network only.",srvEnabled:"Server link enabled",tls:"Secure link (TLS, the certificate is always checked)",caPem:"Private CA certificate (PEM, optional; empty = built-in public CAs)",clearCa:"Clear certificate",hubId:"Hub ID",hubSecret:"Hub secret",host:"Server address",port:"Port",prefix:"Topic prefix",keepalive:"Keepalive (s)",lostAlarm:"Alarm when the server is lost for (s, 0 = none)",
+server:"Server (OPC / platform)",serverSub:"The hub introduces itself to the server with this id and carries the modules' messages. Off or empty: the hub works on the local network only.",srvEnabled:"Server link enabled",smsLang:"Alarm SMS language",smsLangEn:"English (160 characters)",smsLangFa:"Persian (70 characters)",holidays:"Extra holidays (lunar and special; one Jalali date per line)",holidaysHelp:"The fixed solar holidays (Nowruz, 12-13 Farvardin, 14-15 Khordad, 22 Bahman, 29 Esfand) are built in. Add each year's lunar holidays here or from the server. A scene with calendar.holidays skips them, or runs only on them.",tplWorkdays:"Working days only (no holidays), Mehr to Esfand",tls:"Secure link (TLS, the certificate is always checked)",caPem:"Private CA certificate (PEM, optional; empty = built-in public CAs)",clearCa:"Clear certificate",hubId:"Hub ID",hubSecret:"Hub secret",host:"Server address",port:"Port",prefix:"Topic prefix",keepalive:"Keepalive (s)",lostAlarm:"Alarm when the server is lost for (s, 0 = none)",
 modBroker:"Local server for modules",modBrokerSub:"Modules set their \"server\" to this hub's address and this port.",offlineS:"Module offline after (s)",
 phoneApi:"Phone control (local network)",phoneApiSub:"The Flutter app reaches the hub directly with a signed key; it works with no internet.",localEnabled:"Local control enabled",showKeys:"Show keys",newKey:"New phone key",keyNote:"Enter the phone key and SMS key only in the admin app.",
 ntp:"Time server (NTP)",utcOffset:"Offset from UTC (minutes; Iran 210)",
@@ -118,12 +118,13 @@ function go(p){page=p;$$(".page").forEach(e=>e.classList.toggle("on",e.id==="p-"
 /* ---------- helpers ---------- */
 const getP=(o,p)=>p.split(".").reduce((a,k)=>a==null?a:a[k],o);
 function setP(o,p,v){const ks=p.split(".");let a=o;for(let i=0;i<ks.length-1;i++){if(a[ks[i]]==null)a[ks[i]]={};a=a[ks[i]]}a[ks[ks.length-1]]=v}
-function dur(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return(d?d+t("d")+" ":"")+(d||h?h+t("h")+" ":"")+m+t("m")}
+function dur(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return(d?d+"d ":"")+(d||h?h+"h ":"")+m+"m"}
 function clockText(utc,off){if(!utc)return"—";const d=new Date((utc+off*60)*1000);const p=n=>String(n).padStart(2,"0");return d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate())+" "+p(d.getUTCHours())+":"+p(d.getUTCMinutes())+":"+p(d.getUTCSeconds())}
 function fill(){
   $$("[data-k]").forEach(e=>{const v=getP(S,e.dataset.k);
     if(e.type==="checkbox")e.checked=!!v;else if(e.dataset.secret)e.value="";else e.value=v==null?"":v});
   $$("[data-secret]").forEach(e=>{e.placeholder=getP(S,e.dataset.secret)?t("savedPass"):""});
+  const hl=$("#holidays");if(hl)hl.value=(S.holidays||[]).join("\n");
   dirty();
 }
 function dirty(){const d=JSON.stringify(S)!==S0;$("#savebar").classList.toggle("show",d)}
@@ -213,6 +214,7 @@ tplNightOff:{id:"night_off",name:"Night off",enabled:true,trigger:{type:"time",a
 tplPulse:{id:"blink",name:"20 s on, 40 s off",enabled:true,trigger:{type:"interval",every_s:60},actions:[{type:"write",device:"m1",tag:"relay_3",value:true},{type:"delay",s:20},{type:"write",device:"m1",tag:"relay_3",value:false}]},
 tplOfflineSms:{id:"mod_lost",name:"Module offline",enabled:true,trigger:{type:"event",event:"module_offline"},actions:[{type:"sms",text:"Module offline"}]},
 tplCloudLost:{id:"net_lost",name:"Internet lost",enabled:true,trigger:{type:"event",event:"cloud_lost"},actions:[{type:"alarm",text:"Internet lost"}]},
+tplWorkdays:{id:"workdays",name:"Workdays 07:00",enabled:true,trigger:{type:"time",at:"07:00",weekdays:[0,1,2,3,4]},calendar:{months:[7,8,9,10,11,12],holidays:"skip"},actions:[{type:"write",device:"m1",tag:"relay_1",value:true}]},
 tplAllOff:{id:"all_off",name:"All off",enabled:true,trigger:{type:"manual"},actions:[{type:"write",device:"m1",tag:"relay_1",value:false},{type:"write",device:"m1",tag:"relay_2",value:false},{type:"write",device:"m1",tag:"relay_3",value:false},{type:"write",device:"m1",tag:"relay_4",value:false}]}};
 function buildTemplates(){const s=$("#tplSel");if(!s)return;s.innerHTML="";for(const k of Object.keys(TPL)){const o=el("option",null,t(k));o.value=k;s.appendChild(o)}}
 async function loadScenes(){try{SC=await api("/api/scenes");scenesLoaded=true;$("#sceneJson").value=JSON.stringify(SC,null,1);renderScenes()}catch(e){}}
@@ -294,6 +296,7 @@ $("#tplAdd").onclick=()=>{let j=[];try{j=JSON.parse($("#sceneJson").value||"[]")
 $("#sceneSave").onclick=saveScenes;
 $("#ctAdd").onclick=()=>{if(!S.gsm.contacts)S.gsm.contacts=[];if(S.gsm.contacts.length>=10)return;S.gsm.contacts.push({name:"",number:"",commands:true,alarms:true});buildContacts();dirty()};
 $("#caClear").onclick=()=>{S.cloud.clearCa=true;S.cloud.ca="";dirty();toast(t("unsaved"))};
+$("#holidays").addEventListener("input",e=>{S.holidays=e.target.value.split("\n").map(x=>x.trim()).filter(Boolean);dirty()});
 $("#scanBtn").onclick=scan;$("#keyShow").onclick=showKeys;$("#keyNew").onclick=newKey;
 $("#setTime").onclick=async()=>{try{await api("/api/time",{utc:Math.floor(Date.now()/1000)});toast(t("saved"),"ok");await poll()}catch(e){toast(t("failed"),"bad")}};
 $("#otaBtn").onclick=uploadOta;$("#bkBtn").onclick=backup;$("#rsFile").onchange=e=>{if(e.target.files[0])restoreFile(e.target.files[0])};

@@ -54,8 +54,10 @@ struct Settings {
   bool gsmEnabled = false;
   String apn, simPin;
   bool smsEnabled = false;
+  String smsLang = "en";                   // alarm SMS text: "en" (7-bit) or "fa" (Persian, UCS2)
   String smsKey;                           // base64url, signs SMS commands
   std::vector<Contact> contacts;
+  std::vector<String> holidays;            // extra holidays, Jalali "YYYY/MM/DD" (the fixed ones are built in)
 };
 
 extern Settings S;
@@ -109,6 +111,10 @@ bool rtcPresent();
 bool rtcLostPower();
 float rtcTempC();
 String clockSource();
+// Jalali calendar (same algorithm as hub/jalali.py). Weekday 0 = Saturday.
+void toJalali(int gy, int gm, int gd, int &jy, int &jm, int &jd);
+bool isHoliday(int jy, int jm, int jd);      // fixed holidays + the list in Settings
+int gsmVbatMv();                             // SIM800L supply voltage, 0 = unknown
 
 // ------------------------------------------------------------------ network ---------------------
 void netBegin(bool configMode);

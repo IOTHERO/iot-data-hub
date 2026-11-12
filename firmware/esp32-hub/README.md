@@ -13,16 +13,19 @@ app keeps controlling everything through the hub's local API, and SMS commands s
 | ESP32-WROOM-32 | | 4 MB flash |
 | W5500 LAN | CS 5, SCK 18, MISO 19, MOSI 23, INT 4, RST 13 | VSPI. Used first; Wi-Fi is the backup |
 | Wi-Fi | on the ESP32 | Station, plus an access point in config mode |
-| GSM modem | RX 16 (from modem TX), TX 17, PWRKEY 25, RST 26 | SIM800 / SIM7600 / A7670, AT commands, 115200 |
+| GSM modem **SIM800L** | RX 16 (from modem TXD), TX 17 (through a 1 k / 2 k divider), RST 26, no power key | AT commands, 9600 baud, 2G only |
 | DS3231 RTC | SDA 21, SCL 22, SQW 34 (reserved) | CR2032 keeps the time through a power cut |
 | LED RUN / CONNECT / ALARM | 27 / 14 / 33 | active HIGH through 1 k |
 | Config switch | 32 (to GND) | ON at power-up = config mode |
 | Reserved | 35, 36, 39 (inputs only), 2, 15, 0, 12 | nothing driven; do not use 12 for outputs (strapping pin) |
 
-Advice for the board: a 5 V / 2 A supply for the modem (SIM800 pulls 2 A bursts), a 1000 µF
-capacitor at the modem, a prefer-4G modem (2G networks are being shut down), a battery or supercap
-UPS for the whole hub (this is the part that must live through a power cut), 3.3 V level
-check on the modem UART, and an antenna that is not inside a metal box.
+SIM800L notes: it needs **3.4 to 4.4 V** at up to 2 A bursts (a Li-ion cell, or a 4 V buck, with a
+1000 µF capacitor next to the module; never the ESP32 3.3 V pin). Its serial logic is 2.8 V, so put a
+divider on ESP32 TX. It switches on by itself (no power key); the firmware resets it through RST when
+it does not answer. It is a 2G modem: check that your operator still has 2G, and keep the antenna out
+of a metal box. The firmware reads the supply voltage (`AT+CBC`) and raises the alarm `gsm_power`
+below 3.5 V. Also advised: a battery or supercap UPS for the whole hub (the part that must live
+through a power cut).
 
 ## LEDs
 
@@ -83,16 +86,21 @@ the image on the portal's System page ("web UI image" switch).
 - **Phone (local API):** `/local/v1/info|nonce|state|command` signed like the modules
   (`hub/platform/local_sign.py`, id = hub id). One door for everything: switch a tag, run a scene,
   edit scenes and the module list, set the hub clock from the phone.
-- **SMS:** `HUB <counter> <alias.tag=value | s.<scene> | ack> <sig>`; sender must be an allowed
-  number; counter must grow; 5 per 10 minutes. Alarm SMS (max 6 per hour) are short English texts.
+- **SMS (control and notices):** `HUB <counter> <alias.tag=value | s.<scene> | ack> <sig>`; the sender
+  must be an allowed number; the counter must grow; 5 per 10 minutes. Alarm SMS (max 6 per hour, the
+  same text once per 10 minutes) go to the contacts with "alarms" on: English (160 characters) or
+  **Persian** (UCS2, 70 characters; setting `gsm.smsLang`). A scene action `sms` can carry any text.
+- **Calendar:** scenes can carry `calendar` (Jalali months, days of the month, a date range, skip or
+  only holidays). The fixed solar holidays are built in; the lunar ones come from the portal or the
+  server (`holidays`). The algorithm is the one in `hub/jalali.py`.
 - **Clock:** DS3231 first, then NTP, the server and the phone correct it. Time scenes need a valid
   clock (alarm `no_time`).
 
 ## Not in this version
 
-- TLS to the server (plain MQTT only: use it inside a VPN or a trusted LAN until added).
+- TLS to the server is written (certificate always checked, private CA optional) but only compiled,
+  not tried against a real broker.
 - HTTP/TCP device transports, hub-to-hub links, RS-485 / Modbus master on the hub, the relay /
   input outputs of the hub itself (pins are reserved).
-- Jalali months and holidays in scenes (weekdays only).
-- Persian SMS text (GSM 7-bit ASCII only).
+- Incoming Persian SMS (commands are signed ASCII).
 - Not tested on real hardware.

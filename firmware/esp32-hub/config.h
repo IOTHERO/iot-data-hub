@@ -17,12 +17,16 @@
 #define PIN_ETH_INT   4
 #define PIN_ETH_RST   13
 
-// GSM modem on UART2 (3.3 V logic; power the modem from its own 5 V / 2 A supply).
-#define PIN_GSM_RX    16      // ESP32 RX  <- modem TX
-#define PIN_GSM_TX    17      // ESP32 TX  -> modem RX
-#define PIN_GSM_PWRKEY 25     // modem power key (pulse), -1 if not wired
-#define PIN_GSM_RST   26      // modem reset, -1 if not wired
-#define GSM_BAUD      115200
+// GSM modem: SIM800L on UART2. The module needs 3.4..4.4 V at up to 2 A bursts (a Li-ion cell or a
+// 4 V buck with a 1000 uF capacitor next to it; NOT the 3.3 V pin). Its serial logic is 2.8 V:
+// put a divider (1 k / 2 k) on ESP32 TX -> modem RX, ESP32 RX can read the modem TX directly.
+// A SIM800L board switches on by itself when power arrives: there is no PWRKEY pin.
+#define PIN_GSM_RX    16      // ESP32 RX  <- modem TXD
+#define PIN_GSM_TX    17      // ESP32 TX  -> (divider) -> modem RXD
+#define PIN_GSM_PWRKEY -1     // -1 for SIM800L (set a GPIO for SIM800C / SIM7600 boards that have one)
+#define PIN_GSM_RST   26      // modem RST (active LOW pulse), -1 if not wired
+#define GSM_BAUD      9600    // SIM800L starts in auto-baud; 9600 is the safe speed
+#define GSM_MIN_VBAT_MV 3500  // below this the SIM800L resets while sending: alarm "gsm_power"
 
 // DS3231 real-time clock on I2C (CR2032 keeps the time through a power cut).
 #define PIN_I2C_SDA   21
@@ -70,5 +74,8 @@
 #define AP_IP 192, 168, 1, 100
 #define ADMIN_PASS_DEFAULT "admin"
 #define DEFAULT_UTC_OFFSET_MIN 210     // Iran standard time (+3:30, no daylight saving)
+
+#define MAX_HOLIDAYS      60           // extra holidays (Jalali dates) from the server or the portal
+#define SMS_UCS2_CHARS    70           // one Persian (UCS2) SMS holds 70 characters
 
 #define LOG_LINES 40                   // live log ring for the portal

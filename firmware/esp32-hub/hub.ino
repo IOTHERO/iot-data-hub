@@ -83,6 +83,23 @@ String logTail(uint32_t &seq) {
 // ---------------------------------------------------------------- alarms ----------------------
 static std::vector<Alarm> alarms;
 
+// Persian text of the built-in alarms, for the SMS to the contacts (settings: gsm.smsLang = "fa").
+static String faText(const String &code, const String &en) {
+  if (code.startsWith("module_")) {
+    int i = en.lastIndexOf(": ");
+    return "ماژول قطع شد: " + (i >= 0 ? en.substring(i + 2) : code.substring(7));
+  }
+  if (code == "cloud_lost") return "ارتباط با سرور قطع شد (هاب محلی کار می‌کند)";
+  if (code == "rtc_lost") return "ساعت RTC زمان را از دست داد";
+  if (code == "no_time") return "ساعت معتبر نیست";
+  if (code == "gsm_down") return "مودم GSM در شبکه نیست";
+  if (code == "gsm_power") return "ولتاژ مودم GSM کم است";
+  if (code == "no_link") return "ارتباط شبکه قطع است";
+  if (code == "config_on") return "کلید کانفیگ هنوز روشن است";
+  if (code == "default_pass") return "رمز مدیر پیش‌فرض است";
+  return en;
+}
+
 void alarmRaise(const char *code, const String &text, bool sms) {
   for (auto &a : alarms) {
     if (a.code == code) { a.text = text; return; }      // already raised: keep its state
@@ -94,7 +111,7 @@ void alarmRaise(const char *code, const String &text, bool sms) {
   a.at = nowUtc();
   alarms.push_back(a);
   hlog(1, "ALARM %s: %s", code, text.c_str());
-  if (sms) smsAlarm(text);
+  if (sms) smsAlarm(S.smsLang == "fa" ? faText(code, text) : text);
   JsonDocument d;
   d["code"] = code;
   d["text"] = text;
@@ -256,6 +273,9 @@ static void healthLoop() {
   fault = ESP.getFreeHeap() < 30000 || (!anyLink() && now > 60000);
   if (S.gsmEnabled && now > 180000 && !gsmUp()) alarmRaise("gsm_down", "GSM modem not registered", false);
   else alarmClear("gsm_down");
+  int vbat = gsmVbatMv();
+  if (S.gsmEnabled && vbat > 0 && vbat < GSM_MIN_VBAT_MV) alarmRaise("gsm_power", "GSM supply voltage low", false);
+  else alarmClear("gsm_power");
   if (now > 60000 && !anyLink()) alarmRaise("no_link", "No network link", false);
   else alarmClear("no_link");
   if (g_configMode && now > 600000) alarmRaise("config_on", "Config switch is still ON", false);

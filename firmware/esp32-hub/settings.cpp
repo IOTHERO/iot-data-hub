@@ -85,6 +85,9 @@ String settingsJson(bool withSecrets) {
   gs["enabled"] = S.gsmEnabled;
   gs["apn"] = S.apn;
   gs["smsEnabled"] = S.smsEnabled;
+  gs["smsLang"] = S.smsLang;
+  JsonArray hol = d["holidays"].to<JsonArray>();
+  for (auto &h : S.holidays) hol.add(h);
   JsonArray cs = gs["contacts"].to<JsonArray>();
   for (auto &c : S.contacts) {
     JsonObject o = cs.add<JsonObject>();
@@ -227,6 +230,11 @@ String settingsApply(const String &json) {
   if (!gs.isNull()) {
     if (gs["enabled"].is<bool>()) n.gsmEnabled = gs["enabled"].as<bool>();
     if (gs["smsEnabled"].is<bool>()) n.smsEnabled = gs["smsEnabled"].as<bool>();
+    String lang;
+    if (takeStr(gs, "smsLang", lang)) {
+      if (lang != "en" && lang != "fa") return "gsm.smsLang";
+      n.smsLang = lang;
+    }
     takeStr(gs, "apn", n.apn);
     takeSecret(gs, "simPin", "clearSimPin", n.simPin);
     if (n.apn.length() > 31) return "gsm.apn";
@@ -252,6 +260,18 @@ String settingsApply(const String &json) {
       }
     }
     if (n.smsEnabled && !n.smsKey.length()) n.smsKey = newKey();
+  }
+  if (r["holidays"].is<JsonArrayConst>()) {             // extra holidays: Jalali "YYYY/MM/DD"
+    n.holidays.clear();
+    for (JsonVariantConst v : r["holidays"].as<JsonArrayConst>()) {
+      String h = v.as<String>();
+      h.replace("-", "/");
+      int y, m, dd;
+      if (n.holidays.size() >= MAX_HOLIDAYS || h.length() != 10 || sscanf(h.c_str(), "%d/%d/%d", &y, &m, &dd) != 3 ||
+          y < 1300 || y > 1500 || m < 1 || m > 12 || dd < 1 || dd > 31)
+        return "holidays";
+      n.holidays.push_back(h);
+    }
   }
   S = n;
   return "";

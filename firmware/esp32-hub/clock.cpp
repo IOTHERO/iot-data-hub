@@ -144,3 +144,37 @@ void clockLoop() {
   if (!valid && now > 90000) alarmRaise("no_time", "No valid clock: time scenes will not run.", false);
   else alarmClear("no_time");
 }
+
+// ---------------------------------------------------------------- Jalali calendar ---------------
+// Same arithmetic as hub/jalali.py (33-year cycle), so the hub and the server agree on every day.
+void toJalali(int gy, int gm, int gd, int &jy, int &jm, int &jd) {
+  static const int gdm[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  int gy2 = gm > 2 ? gy + 1 : gy;
+  long days = 355666L + 365L * gy + (gy2 + 3) / 4 - (gy2 + 99) / 100 + (gy2 + 399) / 400 + gd + gdm[gm - 1];
+  jy = -1595 + 33 * (int)(days / 12053);
+  days %= 12053;
+  jy += 4 * (int)(days / 1461);
+  days %= 1461;
+  if (days > 365) {
+    jy += (int)((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+  if (days < 186) {
+    jm = 1 + (int)(days / 31);
+    jd = 1 + (int)(days % 31);
+  } else {
+    jm = 7 + (int)((days - 186) / 30);
+    jd = 1 + (int)((days - 186) % 30);
+  }
+}
+
+// The solar holidays are fixed; the lunar ones move every year and come from the list in Settings.
+bool isHoliday(int jy, int jm, int jd) {
+  static const uint8_t fixedDays[][2] = {{1, 1}, {1, 2}, {1, 3}, {1, 4}, {1, 12}, {1, 13},
+                                         {3, 14}, {3, 15}, {11, 22}, {12, 29}};
+  for (auto &f : fixedDays) if (f[0] == jm && f[1] == jd) return true;
+  char b[11];
+  snprintf(b, sizeof b, "%04d/%02d/%02d", jy, jm, jd);
+  for (auto &h : S.holidays) if (h == b) return true;
+  return false;
+}

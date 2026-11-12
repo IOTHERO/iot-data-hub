@@ -8,6 +8,8 @@
 //          {"type":"value","device":"m1","tag":"relay_1","op":"eq","value":true,"for_s":0}
 //          {"type":"event","event":"cloud_lost|cloud_back|module_offline|module_online","device":"m1"}
 //          {"type":"manual"}                                       run by the phone, SMS or portal
+// calendar (optional, any trigger except manual; Jalali dates, local time):
+//          {"months":[1..12],"month_days":[1..31],"from":"MM/DD|YYYY/MM/DD","to":"...","holidays":"skip|only"}
 // condition: {"device","tag","op","value"}   (op: eq ne lt le gt ge)
 // action: {"type":"write","device","tag","value","pulse_s"} | {"type":"delay","s"} |
 //         {"type":"scene","id"} | {"type":"sms","text"} | {"type":"alarm","text"}
@@ -71,6 +73,57 @@ static bool conditionsHold(JsonObjectConst scene) {
   return true;
 }
 
+// "MM/DD" (every year) or "YYYY/MM/DD" -> a sortable key; false when malformed.
+static bool dateKey(const char *s, int &key, bool &yearly) {
+  int a, b, c;
+  if (strlen(s) == 10 && sscanf(s, "%d/%d/%d", &a, &b, &c) == 3 && b >= 1 && b <= 12 && c >= 1 && c <= 31) {
+    key = a * 10000 + b * 100 + c;
+    yearly = false;
+    return true;
+  }
+  if (strlen(s) == 5 && sscanf(s, "%d/%d", &a, &b) == 2 && a >= 1 && a <= 12 && b >= 1 && b <= 31) {
+    key = a * 100 + b;
+    yearly = true;
+    return true;
+  }
+  return false;
+}
+
+// The calendar gate: months, days of the month, a date range and holidays, all in the Jalali calendar.
+static bool calendarOk(JsonObjectConst scene) {
+  JsonObjectConst cal = scene["calendar"];
+  if (cal.isNull()) return true;
+  if (!clockValid()) return false;                      // a calendar rule never guesses the date
+  time_t t = nowLocal();
+  tm lt;
+  gmtime_r(&t, &lt);
+  int jy, jm, jd;
+  toJalali(lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday, jy, jm, jd);
+  auto listed = [](JsonArrayConst a, int v) {
+    if (a.isNull() || a.size() == 0) return true;
+    for (JsonVariantConst x : a) if (x.as<int>() == v) return true;
+    return false;
+  };
+  if (!listed(cal["months"], jm) || !listed(cal["month_days"], jd)) return false;
+  int fromK = 0, toK = 0;
+  bool fromY = false, toY = false, hasFrom = false, hasTo = false;
+  if ((cal["from"] | "")[0]) hasFrom = dateKey(cal["from"], fromK, fromY);
+  if ((cal["to"] | "")[0]) hasTo = dateKey(cal["to"], toK, toY);
+  if (hasFrom || hasTo) {
+    int key = (hasFrom ? fromY : toY) ? jm * 100 + jd : jy * 10000 + jm * 100 + jd;
+    if (hasFrom && hasTo && fromY && toY && fromK > toK) {   // a range over the new year (e.g. Azar to Farvardin)
+      if (!(key >= fromK || key <= toK)) return false;
+    } else {
+      if (hasFrom && key < fromK) return false;
+      if (hasTo && key > toK) return false;
+    }
+  }
+  String pol = cal["holidays"] | "";
+  if (pol == "skip" && isHoliday(jy, jm, jd)) return false;
+  if (pol == "only" && !isHoliday(jy, jm, jd)) return false;
+  return true;
+}
+
 static SceneState &stateOf(const String &id) {
   for (auto &s : states) if (s.id == id) return s;
   states.push_back(SceneState());
@@ -124,6 +177,19 @@ bool scenesPut(const String &json, String &err) {
     }
     for (JsonObjectConst c : s["conditions"].as<JsonArrayConst>())
       if (!validCondition(c)) { err = "condition"; return false; }
+    JsonObjectConst cal = s["calendar"];
+    if (!cal.isNull()) {
+      for (JsonVariantConst m : cal["months"].as<JsonArrayConst>())
+        if (m.as<int>() < 1 || m.as<int>() > 12) { err = "calendar.months"; return false; }
+      for (JsonVariantConst m : cal["month_days"].as<JsonArrayConst>())
+        if (m.as<int>() < 1 || m.as<int>() > 31) { err = "calendar.month_days"; return false; }
+      int k;
+      bool y;
+      if ((cal["from"] | "")[0] && !dateKey(cal["from"], k, y)) { err = "calendar.from"; return false; }
+      if ((cal["to"] | "")[0] && !dateKey(cal["to"], k, y)) { err = "calendar.to"; return false; }
+      String pol = cal["holidays"] | "";
+      if (pol.length() && pol != "skip" && pol != "only") { err = "calendar.holidays"; return false; }
+    }
     JsonArrayConst acts = s["actions"];
     if (acts.isNull() || acts.size() == 0 || acts.size() > 16) { err = "actions"; return false; }
     for (JsonObjectConst a : acts) {
@@ -316,6 +382,6 @@ void scenesLoop() {
             (!(tr["device"] | "")[0] || findModule(tr["device"] | "") == findModule(e.second)))
           fire = true;
     }
-    if (fire && conditionsHold(s)) startRun(id, "trigger", 0, err);
+    if (fire && conditionsHold(s) && calendarOk(s)) startRun(id, "trigger", 0, err);
   }
 }

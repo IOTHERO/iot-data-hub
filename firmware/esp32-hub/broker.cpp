@@ -170,7 +170,9 @@ static void applyHubConfig(JsonObjectConst c) {
     g["smsEnabled"] = c["sms"]["enabled"] | S.smsEnabled;
     if ((c["sms"]["key"] | "")[0]) g["smsKey"] = c["sms"]["key"];
     if (c["contacts"].is<JsonArrayConst>()) g["contacts"] = c["contacts"];
+    if ((c["sms"]["lang"] | "")[0]) g["smsLang"] = c["sms"]["lang"];
   }
+  if (c["holidays"].is<JsonArrayConst>()) out["holidays"] = c["holidays"];
   if (c["utc_offset_min"].is<int>()) out["net"]["utcOffsetMin"] = c["utc_offset_min"];
   String j;
   serializeJson(out, j);

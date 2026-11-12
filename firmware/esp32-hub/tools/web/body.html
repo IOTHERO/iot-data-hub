@@ -176,6 +176,8 @@
           <label class="f"><span>APN</span><input class="in ltr" data-k="gsm.apn" maxlength="31"></label>
           <label class="f"><span data-t="simPin"></span><input class="in ltr" type="password" data-k="gsm.simPin" data-secret="gsm.simPinSet" maxlength="8" autocomplete="new-password"></label>
           <label class="tg"><span data-t="smsEnabled"></span><input type="checkbox" data-k="gsm.smsEnabled"><i></i></label>
+          <label class="f"><span data-t="smsLang"></span><select class="in" data-k="gsm.smsLang">
+            <option value="en" data-t="smsLangEn"></option><option value="fa" data-t="smsLangFa"></option></select></label>
           <p class="sub" data-t="smsHelp"></p>
         </div>
         <div class="card">
@@ -195,6 +197,8 @@
           </div>
           <div class="bar" style="margin-top:14px"><button class="btn" id="setTime" data-t="setFromDevice"></button></div>
           <p class="sub" style="margin-top:12px" data-t="clockHelp"></p>
+          <label class="f"><span data-t="holidays"></span><textarea class="in" id="holidays" rows="4" spellcheck="false" placeholder="1405/08/20"></textarea></label>
+          <p class="sub" data-t="holidaysHelp"></p>
         </div>
       </div>
     </section>

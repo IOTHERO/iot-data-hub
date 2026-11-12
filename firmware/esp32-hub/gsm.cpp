@@ -20,6 +20,7 @@ struct Sms { String number, text; };
 static std::deque<Sms> outbox, inbox;
 static volatile bool up = false;
 static volatile int csq = -1;
+static volatile int vbatMv = 0;
 static String oper;
 static bool started = false;
 
@@ -42,13 +43,23 @@ static String at(const String &cmd, uint32_t timeoutMs = 2000) {
   return atRead(timeoutMs, "OK", "ERROR");
 }
 
+// No answer: wake the modem. SIM800L has no power key, so pulse its RST pin (active LOW);
+// boards with a power key get the key pulse instead.
 static void pulsePower() {
-  if (PIN_GSM_PWRKEY < 0) return;
-  pinMode(PIN_GSM_PWRKEY, OUTPUT);
-  digitalWrite(PIN_GSM_PWRKEY, HIGH);                   // transistor to GND: HIGH = key pressed
-  vTaskDelay(1200 / portTICK_PERIOD_MS);
-  digitalWrite(PIN_GSM_PWRKEY, LOW);
-  vTaskDelay(3000 / portTICK_PERIOD_MS);
+  if (PIN_GSM_PWRKEY >= 0) {
+    pinMode(PIN_GSM_PWRKEY, OUTPUT);
+    digitalWrite(PIN_GSM_PWRKEY, HIGH);                 // transistor to GND: HIGH = key pressed
+    vTaskDelay(1200 / portTICK_PERIOD_MS);
+    digitalWrite(PIN_GSM_PWRKEY, LOW);
+  } else if (PIN_GSM_RST >= 0) {
+    pinMode(PIN_GSM_RST, OUTPUT);
+    digitalWrite(PIN_GSM_RST, LOW);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    digitalWrite(PIN_GSM_RST, HIGH);
+  } else {
+    return;
+  }
+  vTaskDelay(4000 / portTICK_PERIOD_MS);
 }
 
 static bool initModem() {
@@ -58,6 +69,7 @@ static bool initModem() {
     if (i == 2) return false;
   }
   at("ATE0");
+  at("AT+CFUN=1");
   at("AT+CMEE=1");
   String pin = at("AT+CPIN?", 3000);
   if (pin.indexOf("SIM PIN") >= 0 && S.simPin.length()) at("AT+CPIN=\"" + S.simPin + "\"", 5000);
@@ -65,6 +77,7 @@ static bool initModem() {
   at("AT+CSCS=\"GSM\"");
   at("AT+CNMI=2,1,0,0,0");                              // new SMS: store and tell (+CMTI)
   at("AT+CPMS=\"SM\",\"SM\",\"SM\"");
+  at("AT+CMGD=1,4");                                    // empty the SIM: old messages fill it up
   return true;
 }
 
@@ -77,6 +90,12 @@ static void pollStatus() {
   int comma = reg.indexOf(',', p);
   int stat = comma > 0 ? reg.substring(comma + 1).toInt() : 0;
   up = (stat == 1 || stat == 5) && csq > 0 && csq < 99;
+  String cbc = at("AT+CBC");                            // +CBC: 0,<percent>,<mV>
+  int cp = cbc.indexOf("+CBC:");
+  if (cp >= 0) {
+    int last = cbc.indexOf(',', cbc.indexOf(',', cp) + 1);
+    if (last > 0) vbatMv = cbc.substring(last + 1).toInt();
+  }
   String op = at("AT+COPS?");
   int q1 = op.indexOf('"'), q2 = op.indexOf('"', q1 + 1);
   if (q1 >= 0 && q2 > q1) oper = op.substring(q1 + 1, q2);
@@ -106,12 +125,58 @@ static void readUnread() {
   }
 }
 
+static bool isAscii(const String &s) {
+  for (size_t i = 0; i < s.length(); i++) if ((uint8_t)s[i] >= 0x80) return false;
+  return true;
+}
+
+// UTF-8 text -> UTF-16BE as hex (what the modem wants in UCS2 mode), at most `maxUnits` units.
+static String utf16Hex(const String &s, size_t maxUnits) {
+  String out;
+  size_t units = 0;
+  for (size_t i = 0; i < s.length() && units < maxUnits;) {
+    uint8_t c = s[i];
+    uint32_t cp;
+    int n;
+    if (c < 0x80) { cp = c; n = 1; }
+    else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; n = 2; }
+    else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; n = 3; }
+    else { cp = '?'; n = (c & 0xF8) == 0xF0 ? 4 : 1; }  // outside the BMP: shown as ?
+    for (int k = 1; k < n && cp != '?'; k++) cp = (cp << 6) | ((uint8_t)s[i + k] & 0x3F);
+    i += n;
+    char b[5];
+    snprintf(b, sizeof b, "%04X", (unsigned)(cp & 0xFFFF));
+    out += b;
+    units++;
+  }
+  return out;
+}
+
 static bool sendOne(const Sms &m) {
-  modem.print("AT+CMGS=\"" + m.number + "\"\r");
-  if (atRead(5000, ">").indexOf('>') < 0) { modem.write(27); return false; }
-  modem.print(m.text);
-  modem.write(26);                                      // Ctrl-Z ends the message
-  return atRead(40000, "+CMGS", "ERROR").indexOf("+CMGS") >= 0;
+  bool ucs2 = !isAscii(m.text);
+  String number = m.number, body = m.text;
+  if (ucs2) {                                           // Persian: UCS2 text mode, 70 characters
+    at("AT+CSCS=\"UCS2\"");
+    at("AT+CSMP=17,167,0,8");
+    number = utf16Hex(m.number, 24);
+    body = utf16Hex(m.text, SMS_UCS2_CHARS);
+  } else {
+    body = body.substring(0, 160);
+  }
+  modem.print("AT+CMGS=\"" + number + "\"\r");
+  bool ok = false;
+  if (atRead(5000, ">").indexOf('>') >= 0) {
+    modem.print(body);
+    modem.write(26);                                    // Ctrl-Z ends the message
+    ok = atRead(40000, "+CMGS", "ERROR").indexOf("+CMGS") >= 0;
+  } else {
+    modem.write(27);
+  }
+  if (ucs2) {
+    at("AT+CSCS=\"GSM\"");
+    at("AT+CSMP=17,167,0,0");
+  }
+  return ok;
 }
 
 static void gsmTask(void *) {
@@ -151,13 +216,14 @@ void gsmBegin() {
 }
 
 bool gsmUp() { return started && up; }
+int gsmVbatMv() { return vbatMv; }
 int gsmSignal() { return csq; }
 String gsmOperator() { return oper; }
 
 void smsSend(const String &to, const String &text) {
   if (!started || !to.length()) return;
   xSemaphoreTake(mtx, portMAX_DELAY);
-  if (outbox.size() < 10) outbox.push_back({to, text.substring(0, 160)});
+  if (outbox.size() < 10) outbox.push_back({to, text});
   xSemaphoreGive(mtx);
 }
 
@@ -175,7 +241,8 @@ void smsAlarm(const String &text) {
   lastAlarmText = text;
   lastAlarmAt = now;
   alarmCount++;
-  for (auto &c : S.contacts) if (c.alarms) smsSend(c.number, S.deviceName.substring(0, 12) + ": " + text);
+  String who = S.hubId.length() ? S.hubId.substring(0, 8) : String("HUB");   // short, never cut inside a character
+  for (auto &c : S.contacts) if (c.alarms) smsSend(c.number, who + ": " + text);
 }
 
 // ---------------------------------------------------------------- signed commands --------------
