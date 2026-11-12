@@ -48,6 +48,22 @@ void hmacSha256(const uint8_t *key, size_t keyLen, const uint8_t *msg, size_t le
   mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, keyLen, msg, len, out);
 }
 
+String sha256Hex(const String &text) {
+  uint8_t h[32];
+  mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const uint8_t *)text.c_str(), text.length(), h);
+  static const char *hex = "0123456789abcdef";
+  String out;
+  out.reserve(64);
+  for (uint8_t b : h) { out += hex[b >> 4]; out += hex[b & 15]; }
+  return out;
+}
+
+bool moduleSecretOk(const Module &m, const String &secret) {
+  if (!secret.length()) return false;
+  if (m.secret.length()) return sameText(m.secret, secret);
+  return m.secretHash.length() == 64 && sameText(m.secretHash, sha256Hex(secret));
+}
+
 bool sameText(const String &a, const String &b) {
   if (a.length() != b.length()) return false;
   uint8_t diff = 0;
@@ -305,6 +321,7 @@ void setup() {
   netBegin(g_configMode);
   scenesBegin();
   brokerBegin();
+  rtuBegin();
   localBegin();
   gsmBegin();
   portalBegin(g_configMode);
@@ -318,6 +335,7 @@ void loop() {
   netLoop();
   clockLoop();
   brokerLoop();
+  rtuLoop();
   scenesLoop();
   localLoop();
   gsmLoop();

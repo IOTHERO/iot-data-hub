@@ -101,6 +101,16 @@ export async function localWrite(body) {
   const entry = m && keyOf(m[1]);
   if (!entry) return { result: "rejected_offline", local: true };
   const valueJson = JSON.stringify(body.value);
+  // behind a central hub: the hub first (it is the module's server), then the module itself
+  const hub = entry.via_hub ? keyOf(entry.via_hub) : null;
+  if (hub) {
+    const target = `${m[1]}:${m[2]}`;
+    const h = await signed(hub, "/local/v1/command", { tag: target, value_json: valueJson }, "command", target, valueJson);
+    if (h.status === 200 && h.data.ok) {
+      patchCache(m[1], { [m[2]]: body.value });
+      return { result: "applied", value: body.value, local: true };
+    }
+  }
   const r = await signed(entry, "/local/v1/command", { tag: m[2], value_json: valueJson }, "command", m[2], valueJson);
   if (r.status === 200 && r.data.ok) {
     patchCache(m[1], { [m[2]]: r.data.value });
@@ -114,6 +124,9 @@ export async function localRefresh() {
   for (const entry of load("local.keys", [])) {
     const r = await signed(entry, "/local/v1/state", {}, "state");
     if (r.status === 200 && r.data.values) patchCache(entry.device_id, r.data.values);
+    if (r.status === 200 && Array.isArray(r.data.modules)) {    // a central hub: its modules
+      for (const mod of r.data.modules) if (mod && mod.id && mod.values) patchCache(mod.id, mod.values);
+    }
   }
 }
 

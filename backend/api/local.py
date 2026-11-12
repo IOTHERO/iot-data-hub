@@ -41,7 +41,9 @@ async def my_local_keys(svc: ServicesDep, p: Viewer, request: Request) -> dict[s
     out = [{"device_id": r.device_id, "identifier": r.identifier, "name": r.name,
             "key": keys[r.device_id]["key"], "version": keys[r.device_id]["version"],
             "local_addr": keys[r.device_id]["local_addr"], "port": svc.local.config(
-                keys[r.device_id])["port"]} for r in mine]
+                keys[r.device_id])["port"],
+            # behind a central hub: the phone may also reach it through that hub's local API
+            "via_hub": svc.ingest.relay.via.get(r.device_id)} for r in mine]
     if out:
         await svc.store.add_auth_audit("local_keys_fetched", p.username, user_id=p.user_id,
                                        client_addr=client_addr(request),

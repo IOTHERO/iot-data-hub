@@ -17,7 +17,8 @@ app keeps controlling everything through the hub's local API, and SMS commands s
 | DS3231 RTC | SDA 21, SCL 22, SQW 34 (reserved) | CR2032 keeps the time through a power cut |
 | LED RUN / CONNECT / ALARM | 27 / 14 / 33 | active HIGH through 1 k |
 | Config switch | 32 (to GND) | ON at power-up = config mode |
-| Reserved | 35, 36, 39 (inputs only), 2, 15, 0, 12 | nothing driven; do not use 12 for outputs (strapping pin) |
+| RS-485 (MAX485 / ADM2682E) | TX 15 → DI, RX 35 ← RO, DE+RE 2 | UART1, 9600 8N1; Modbus RTU master for modules on a bus |
+| Reserved | 36, 39 (inputs only), 0, 12 | nothing driven; do not use 12 for outputs (strapping pin) |
 
 SIM800L notes: it needs **3.4 to 4.4 V** at up to 2 A bursts (a Li-ion cell, or a 4 V buck, with a
 1000 µF capacitor next to the module; never the ESP32 3.3 V pin). Its serial logic is 2.8 V, so put a
@@ -56,6 +57,7 @@ through a power cut).
 | `scenes.cpp` | schedules and scenarios (run on the hub) |
 | `local.cpp` | signed local API for the phone app (port 8080) |
 | `gsm.cpp` | modem task, SMS in and out, signed SMS commands |
+| `rs485.cpp` | Modbus RTU master: modules on the RS-485 bus (DEVICE 8DO in RS-485 mode) look like MQTT ones |
 | `portal.cpp` | web portal API, OTA, static files |
 | `data/` | web UI (LittleFS image, separate from the firmware) |
 | `tools/web/`, `tools/build_web.sh` | sources of `data/index.html` (theme of the Relay-8 module) |
@@ -96,11 +98,23 @@ the image on the portal's System page ("web UI image" switch).
 - **Clock:** DS3231 first, then NTP, the server and the phone correct it. Time scenes need a valid
   clock (alarm `no_time`).
 
+## Modules: three ways in
+
+| Module | How | Registry entry |
+|---|---|---|
+| Networked (LAN W5500 or Wi-Fi) | signs in to this hub's MQTT server with its device id and secret | `id`, `secret` (portal / phone) or `secret_sha256` (from the server) |
+| On the RS-485 bus | the hub asks it (Modbus RTU, coils 0..7, pulses in holding 2..9) | `id`, `rtu` = its Modbus address (no secret) |
+| New, unknown | enrollment window (config switch 3 s, or the portal button) | added by itself |
+
+The server sends the registry when the hub connects (the home's own devices, by the SHA-256 of
+their secret; the hub never sees a secret from the server). RS-485 entries set in the portal stay:
+the server cannot see the bus. Every module, whichever way in, goes up to the server as
+`h/<hub>/up` and takes commands from the server, the phone, SMS and scenes the same way.
+
 ## Not in this version
 
 - TLS to the server is written (certificate always checked, private CA optional) but only compiled,
   not tried against a real broker.
-- HTTP/TCP device transports, hub-to-hub links, RS-485 / Modbus master on the hub, the relay /
-  input outputs of the hub itself (pins are reserved).
+- HTTP/TCP device transports, hub-to-hub links, the relay / input outputs of the hub itself.
 - Incoming Persian SMS (commands are signed ASCII).
 - Not tested on real hardware.

@@ -10,6 +10,7 @@ import '../core/app_state.dart';
 import '../core/live.dart';
 import '../ui/chart.dart';
 import '../ui/climate.dart';
+import '../ui/hub_card.dart';
 import '../ui/kit.dart';
 import '../ui/outputs.dart';
 import '../ui/remotes.dart';
@@ -295,6 +296,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
           Expanded(child: Text(s.t('sms.offline_hint'), style: TextStyle(fontSize: 13, color: tk.text))),
           Icon(Icons.chevron_left_rounded, color: tk.muted),
         ])),
+      HubCard(state: s, deviceId: widget.deviceId, owner: '${d['access']}' == 'owner'),
       RemotesCard(state: s, deviceId: widget.deviceId, canOperate: operate),
       if (settings.isNotEmpty)
         WebCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

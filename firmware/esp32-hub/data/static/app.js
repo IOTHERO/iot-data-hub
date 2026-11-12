@@ -8,7 +8,7 @@ modOnline:"ماژول‌های آنلاین",clock:"ساعت",uptime:"زمان �
 alarms:"هشدارها",ack:"تأیید همه",noAlarms:"هشدار فعالی نیست",
 enrollSub:"ماژولی که شناسه و رمزش در فهرست نیست فقط وقتی ثبت می‌شود که این پنجره باز باشد.",enrollOpen:"باز کردن ثبت (۲ دقیقه)",enrollOpenNow:"ثبت باز است",
 registry:"فهرست ماژول‌ها",registrySub:"ماژول‌ها با شناسه و رمز خودشان (همان که در ماژول ثبت شده) به این هاب وصل می‌شوند. نام کوتاه برای فرمان پیامکی است (مثلاً m1).",
-modId:"شناسه (Device ID)",modSecret:"رمز دستگاه",name:"نام",alias:"نام کوتاه",addModule:"افزودن ماژول",save:"ذخیره",saved:"ذخیره شد",invalid:"مقدار نامعتبر: ",secretKeep:"•••••• (ذخیره شده)",remove:"حذف",
+modId:"شناسه (Device ID)",modSecret:"رمز دستگاه",name:"نام",alias:"نام کوتاه",modRtu:"آدرس RS-485 (اگر روی باس است)",addModule:"افزودن ماژول",save:"ذخیره",saved:"ذخیره شد",invalid:"مقدار نامعتبر: ",secretKeep:"•••••• (ذخیره شده)",remove:"حذف",
 noModules:"هنوز ماژولی ثبت نشده است.",lastSeen:"آخرین پیام",secAgo:"ثانیه پیش",noValues:"داده‌ای نرسیده",
 scenesSub:"روی خود هاب اجرا می‌شوند؛ با قطع اینترنت هم کار می‌کنند",sceneEditor:"ویرایش سناریوها (JSON)",sceneHelp:"هر سناریو: ماشه (time، interval، value، event، manual)، شرط اختیاری و فهرست اقدام. ساعت‌ها به وقت محلی هاب‌اند؛ روزها از ۰=شنبه.",
 addTemplate:"افزودن نمونه",saveScenes:"ذخیرهٔ سناریوها",run:"اجرا",running:"در حال اجرا",enabled:"فعال",noScenes:"سناریویی تعریف نشده است.",
@@ -40,7 +40,7 @@ modOnline:"Modules online",clock:"Clock",uptime:"Uptime",heap:"Free memory",rtcT
 alarms:"Alarms",ack:"Acknowledge all",noAlarms:"No active alarms",
 enrollSub:"A module whose id and secret are not in the list can register only while this window is open.",enrollOpen:"Open enrollment (2 min)",enrollOpenNow:"Enrollment is open",
 registry:"Module list",registrySub:"Modules connect to this hub with their own device id and secret (the ones stored in the module). The short name is used in SMS commands (for example m1).",
-modId:"Device ID",modSecret:"Device secret",name:"Name",alias:"Short name",addModule:"Add module",save:"Save",saved:"Saved",invalid:"Invalid value: ",secretKeep:"•••••• (saved)",remove:"Remove",
+modId:"Device ID",modSecret:"Device secret",name:"Name",alias:"Short name",modRtu:"RS-485 address (if on the bus)",addModule:"Add module",save:"Save",saved:"Saved",invalid:"Invalid value: ",secretKeep:"•••••• (saved)",remove:"Remove",
 noModules:"No module registered yet.",lastSeen:"Last message",secAgo:"s ago",noValues:"No data yet",
 scenesSub:"They run on the hub itself, so they keep working with no internet",sceneEditor:"Edit scenes (JSON)",sceneHelp:"A scene has a trigger (time, interval, value, event, manual), optional conditions and a list of actions. Times are the hub's local time; weekdays: 0 = Saturday.",
 addTemplate:"Add example",saveScenes:"Save scenes",run:"Run",running:"Running",enabled:"Enabled",noScenes:"No scenes defined.",
@@ -192,7 +192,7 @@ function renderModules(){
         b.onclick=async()=>{try{await api("/api/command",{target:m.id+":"+tag,value:!val});toast(t("sent"),"ok")}catch(e){toast(t("failed")+": "+e.message,"bad")}};v.appendChild(b)}
       else{const ch=el("span","vchip",tag);ch.appendChild(el("b",null,String(val)));v.appendChild(ch)}}
     c.appendChild(v);box.appendChild(c)}
-  if(!regDirty){REG=ST.modules.map(m=>({id:m.id,name:m.name,alias:m.alias,secret:"",secretSet:m.secretSet,isNew:false}));buildReg()}
+  if(!regDirty){REG=ST.modules.map(m=>({id:m.id,name:m.name,alias:m.alias,rtu:m.rtu||"",secret:"",secretSet:m.secretSet,isNew:false}));buildReg()}
 }
 /* ---------- module registry ---------- */
 function buildReg(){
@@ -200,11 +200,11 @@ function buildReg(){
   REG.forEach((r,i)=>{const tr=el("tr");
     const mk=(key,ltr,ph,type)=>{const td=el("td"),i2=el("input","in"+(ltr?" ltr":""));i2.value=r[key]||"";if(ph)i2.placeholder=ph;if(type)i2.type=type;
       i2.disabled=key==="id"&&!r.isNew;i2.oninput=()=>{r[key]=i2.value;regDirty=true};td.appendChild(i2);return td};
-    tr.append(mk("id",true),mk("secret",true,r.secretSet?t("secretKeep"):"","password"),mk("name"),mk("alias",true));
+    tr.append(mk("id",true),mk("secret",true,r.secretSet?t("secretKeep"):"","password"),mk("name"),mk("alias",true),mk("rtu",true,"—","number"));
     const td=el("td"),del=el("button","btn sm red",t("remove"));del.onclick=()=>{REG.splice(i,1);regDirty=true;buildReg()};td.appendChild(del);tr.appendChild(td);b.appendChild(tr)});
 }
 async function saveReg(){
-  const out=REG.map(r=>{const o={id:r.id.trim(),name:r.name||"",alias:r.alias||""};if(r.secret)o.secret=r.secret;return o});
+  const out=REG.map(r=>{const o={id:r.id.trim(),name:r.name||"",alias:r.alias||""};if(r.secret)o.secret=r.secret;if(+r.rtu>0)o.rtu=+r.rtu;return o});
   try{await api("/api/modules",out);regDirty=false;toast(t("saved"),"ok");await poll()}catch(e){toast(t("invalid")+(e.field||e.message),"bad")}
 }
 /* ---------- scenes ---------- */
@@ -290,7 +290,7 @@ $("#lbtn").onclick=login;$("#lpass").addEventListener("keydown",e=>{if(e.key==="
 $("#save").onclick=saveAll;$("#discard").onclick=()=>{S=JSON.parse(S0);fill();buildContacts()};
 $("#enrollBtn").onclick=async()=>{try{await api("/api/enroll",{});await poll()}catch(e){}};
 $("#ackBtn").onclick=async()=>{try{await api("/api/alarms/ack",{});await poll()}catch(e){}};
-$("#regAdd").onclick=()=>{REG.push({id:"",name:"",alias:"",secret:"",secretSet:false,isNew:true});regDirty=true;buildReg()};
+$("#regAdd").onclick=()=>{REG.push({id:"",name:"",alias:"",rtu:"",secret:"",secretSet:false,isNew:true});regDirty=true;buildReg()};
 $("#regSave").onclick=saveReg;
 $("#tplAdd").onclick=()=>{let j=[];try{j=JSON.parse($("#sceneJson").value||"[]")}catch(e){}const k=$("#tplSel").value,tp=JSON.parse(JSON.stringify(TPL[k]));let n=1,id=tp.id;while(j.some(x=>x.id===id))id=tp.id+(++n);tp.id=id;j.push(tp);$("#sceneJson").value=JSON.stringify(j,null,1)};
 $("#sceneSave").onclick=saveScenes;

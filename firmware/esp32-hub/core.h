@@ -74,6 +74,10 @@ bool nvsWriteBlob(const char *key, const String &value);
 struct Value { String tag; double v = 0; };
 struct Module {
   String id, secret, name, alias;          // alias: short name used in SMS ("m1")
+  String secretHash;                       // SHA-256 hex of the secret (registry from the server,
+                                           // which never has the secret itself); "" = use secret
+  uint8_t rtu = 0;                         // 1..247: on the RS-485 bus at this Modbus address
+                                           // (the hub polls it); 0 = an MQTT module
   bool online = false;
   uint32_t lastSeenMs = 0;
   String addr, firmware;
@@ -85,7 +89,14 @@ extern std::vector<Module> modules;
 bool registryLoad();
 bool registrySave();
 String registryJson(bool withSecrets);
-String registryApply(const String &json);    // replace the registry from [{id,secret,name,alias}]
+String registryApply(const String &json, bool keepLocalRtu = false);   // [{id,secret,name,alias,rtu}]
+// keepLocalRtu (registry from the server): RS-485 modules set here stay, the server cannot see them
+
+// RS-485 bus (rs485.cpp): the hub as Modbus RTU master; its modules look like MQTT ones upward
+void rtuBegin();
+void rtuLoop();
+bool rtuSend(Module &m, const String &topic, const String &payload);   // cmd to a bus module
+void moduleMessage(const String &id, const char *kind, const String &payload);   // as if published
 Module *findModule(const String &idOrAlias);
 bool moduleValue(const Module &m, const String &tag, double &out);
 
@@ -176,6 +187,8 @@ void portalLoop();
 String b64urlEncode(const uint8_t *data, size_t len);
 size_t b64urlDecode(const String &in, uint8_t *out, size_t outMax);
 void hmacSha256(const uint8_t *key, size_t keyLen, const uint8_t *msg, size_t len, uint8_t out[32]);
+String sha256Hex(const String &text);                 // lowercase hex
+bool moduleSecretOk(const Module &m, const String &secret);   // plain secret or its SHA-256
 bool sameText(const String &a, const String &b);     // constant time for equal lengths
 String hubStatusJson();                      // the dashboard's numbers (uptime, heap, links, ...)
 bool configMode();

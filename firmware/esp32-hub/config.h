@@ -39,8 +39,18 @@
 #define PIN_LED_ALARM   33
 #define PIN_CONFIG_SW   32
 
-// Reserved for later (nothing is driven on them now): GPIO 35, 36, 39 (inputs only),
-// GPIO 2 and 15 (strapping, usable), GPIO 12 (MTDI strapping: keep LOW at boot), GPIO 0 (boot).
+// RS-485 (Modbus RTU master for modules wired on a bus, e.g. DEVICE 8DO in RS-485 mode), UART1.
+// DE+RE on GPIO2: LOW at boot = receive, as the transceiver needs. -1 in PIN_RS485_TX = no bus.
+#define PIN_RS485_TX  15      // -> DI
+#define PIN_RS485_RX  35      // <- RO (input-only pin)
+#define PIN_RS485_DE  2       // DE+RE, HIGH = send
+#define RS485_BAUD    9600
+#define RTU_POLL_MS   500     // one module polled every 0.5 s, in turn
+#define RTU_TIMEOUT_MS 120    // reply time per request
+#define RTU_REPORT_MS 30000   // values sent up at least this often, else on change
+
+// Reserved for later (nothing is driven on them now): GPIO 36, 39 (inputs only),
+// GPIO 12 (MTDI strapping: keep LOW at boot), GPIO 0 (boot).
 
 // ------------------------------------------------------------------ limits and timings ---------
 #define MAX_MODULES        32      // modules in the registry

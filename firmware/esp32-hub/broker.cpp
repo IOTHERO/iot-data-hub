@@ -52,7 +52,7 @@ class LocalBroker : public PicoMQTT::ServerLocalSubscribe {
     Module *m = nullptr;
     for (auto &x : modules) if (x.id == id) m = &x;
     if (m) {
-      if (sameText(m->secret, secret)) return PicoMQTT::CRC_ACCEPTED;
+      if (moduleSecretOk(*m, secret)) return PicoMQTT::CRC_ACCEPTED;
       hlog(1, "module %s: wrong secret", id.c_str());
       return PicoMQTT::CRC_BAD_USERNAME_OR_PASSWORD;
     }
@@ -154,6 +154,7 @@ static void publishSnapshots() {                        // after (re)connecting:
 static void toModule(const String &idOrAlias, const String &topic, const String &payload) {
   Module *m = findModule(idOrAlias);
   if (!m) { hlog(1, "server message for unknown module %s", idOrAlias.c_str()); return; }
+  if (m->rtu) { rtuSend(*m, topic, payload); return; }        // on the RS-485 bus
   if (broker) broker->publish("d/" + m->id + "/" + topic, payload, 1, false);
 }
 
@@ -203,7 +204,7 @@ static void onDown(char *payload) {
   } else if (type == "registry") {
     String m;
     serializeJson(d["modules"], m);
-    String bad = registryApply(m);
+    String bad = registryApply(m, true);
     if (bad.isEmpty()) registrySave();
     else hlog(1, "registry from server refused: %s", bad.c_str());
   } else if (type == "scenes") {
@@ -341,6 +342,13 @@ static void onModuleMessage(char *topic, char *payload) {
   cloudEnvelope(id, kind == "ota/status" ? "ota_status" : kind.c_str(), String(payload));
 }
 
+void moduleMessage(const String &id, const char *kind, const String &payload) {
+  String topic = "d/" + id + "/" + kind;
+  std::vector<char> t(topic.c_str(), topic.c_str() + topic.length() + 1);
+  std::vector<char> p(payload.c_str(), payload.c_str() + payload.length() + 1);
+  onModuleMessage(t.data(), p.data());
+}
+
 bool commandModule(const String &target, const String &valueJson, float pulseS, const char *by, String &err) {
   int colon = target.indexOf(':');
   if (colon <= 0) { err = "target"; return false; }
@@ -361,6 +369,11 @@ bool commandModule(const String &target, const String &valueJson, float pulseS, 
   serializeJson(d, out);
   m->lastCmdId = cid;
   m->lastCmdStatus = "sent";
+  if (m->rtu) {                                         // on the RS-485 bus
+    if (!rtuSend(*m, "cmd", out)) { err = "bus"; return false; }
+    hlog(2, "%s -> %s (rtu %u) %s=%s", by, m->id.c_str(), m->rtu, tag.c_str(), valueJson.c_str());
+    return true;
+  }
   if (!broker) { err = "no broker"; return false; }
   broker->publish("d/" + m->id + "/cmd", out, 1, false);
   hlog(2, "%s -> %s %s=%s", by, m->id.c_str(), tag.c_str(), valueJson.c_str());
@@ -376,7 +389,8 @@ String modulesStateJson() {
     o["id"] = m.id;
     o["name"] = m.name;
     o["alias"] = m.alias;
-    o["secretSet"] = m.secret.length() > 0;
+    o["secretSet"] = m.secret.length() > 0 || m.secretHash.length() > 0;
+    if (m.rtu) o["rtu"] = m.rtu;
     o["online"] = m.online;
     o["age_s"] = m.lastSeenMs ? (long)((now - m.lastSeenMs) / 1000) : -1;
     o["addr"] = m.addr;

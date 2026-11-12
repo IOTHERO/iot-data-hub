@@ -41,6 +41,7 @@ import javax.crypto.spec.SecretKeySpec;
  */
 final class LocalBridge {
     private static final String SERVICE = "_titiswitch._tcp.";
+    private static final String HUB_SERVICE = "_titihub._tcp.";      // central hubs (TXT id=<hub_id>)
     private static final int MAX_BODY = 64 * 1024;
 
     private final MainActivity activity;
@@ -133,7 +134,11 @@ final class LocalBridge {
     @JavascriptInterface
     public void discover(String id, int timeoutMs) {
         if (!trusted()) { done(id, 0, "[]"); return; }
-        main.post(() -> new Discovery(id, timeoutMs).start());
+        // devices first, then central hubs, in the same time; one answer with both
+        JSONArray all = new JSONArray();
+        int half = Math.max(500, timeoutMs / 2);
+        main.post(() -> new Discovery(id, half, SERVICE, all,
+                () -> new Discovery(id, half, HUB_SERVICE, all, null).start()).start());
     }
 
     @JavascriptInterface
@@ -150,18 +155,24 @@ final class LocalBridge {
         }
     }
 
-    /** One mDNS browse: every _titiswitch._tcp service found within the time, resolved. */
+    /** One mDNS browse: every service of the type found within the time, resolved; then the
+     *  next browse, or the answer with everything found. */
     private final class Discovery implements NsdManager.DiscoveryListener {
         private final String id;
         private final int timeoutMs;
+        private final String service;
+        private final Runnable next;
         private final NsdManager nsd = (NsdManager) activity.getSystemService(Context.NSD_SERVICE);
-        private final JSONArray found = new JSONArray();
+        private final JSONArray found;
         private WifiManager.MulticastLock lock;
         private boolean finished;
 
-        Discovery(String id, int timeoutMs) {
+        Discovery(String id, int timeoutMs, String service, JSONArray found, Runnable next) {
             this.id = id;
             this.timeoutMs = timeoutMs;
+            this.service = service;
+            this.found = found;
+            this.next = next;
         }
 
         void start() {
@@ -173,7 +184,7 @@ final class LocalBridge {
                 lock.acquire();
             }
             try {
-                nsd.discoverServices(SERVICE, NsdManager.PROTOCOL_DNS_SD, this);
+                nsd.discoverServices(service, NsdManager.PROTOCOL_DNS_SD, this);
             } catch (Exception e) {
                 finish();
                 return;
@@ -186,7 +197,8 @@ final class LocalBridge {
             finished = true;
             try { nsd.stopServiceDiscovery(this); } catch (Exception ignored) { }
             if (lock != null && lock.isHeld()) lock.release();
-            done(id, 200, found.toString());
+            if (next != null) main.post(next);
+            else done(id, 200, found.toString());
         }
 
         @Override

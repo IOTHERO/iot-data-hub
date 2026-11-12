@@ -79,6 +79,9 @@ class EspHubSim:
         self._last_fire: dict[str, Any] = {}
         self._value_true: dict[str, bool] = {}
         self._client: Any = None
+        self.local_key_from_server = False
+        self.registry: list[dict[str, Any]] = []     # from the server: who may sign in
+        self.server_time: str | None = None
         self._down_task: asyncio.Task[None] | None = None
 
     # --- modules -----------------------------------------------------------------------------
@@ -88,6 +91,12 @@ class EspHubSim:
         self.alias[alias] = sim.device_id
         self.seen[sim.device_id] = self.clock()
         self.online[sim.device_id] = True
+
+    def module_may_sign_in(self, device_id: str, secret: str) -> bool:
+        """The firmware's check (broker.cpp / moduleSecretOk): a plain secret or its SHA-256."""
+        digest = hashlib.sha256(secret.encode("utf-8")).hexdigest()
+        return any(r.get("id") == device_id and hmac.compare_digest(
+            str(r.get("secret_sha256") or ""), digest) for r in self.registry)
 
     def _module(self, key: str) -> NativeDeviceSim | None:
         return self.modules.get(self.alias.get(key, key))
@@ -192,6 +201,9 @@ class EspHubSim:
         self._down_task = asyncio.create_task(self._down_loop(client))
 
     async def disconnect_cloud(self) -> None:
+        # a clean disconnect sends no will: say "offline" first, as the firmware does
+        with contextlib.suppress(Exception):
+            await self.publish("state", {"state": "offline"}, retain=True)
         client, self._client = self._client, None
         if self._down_task:
             self._down_task.cancel()
@@ -220,6 +232,10 @@ class EspHubSim:
                 sim.receive(
                     {"type": kind, **msg.get("p", {})} if kind in ("rules", "config") else msg["p"]
                 )
+        elif kind == "registry":
+            self.registry = list(msg.get("modules") or [])
+        elif kind == "time":
+            self.server_time = msg.get("server_time")
         elif kind == "scenes":
             self.put_scenes(msg["scenes"])
         elif kind == "scene_run":
@@ -232,6 +248,7 @@ class EspHubSim:
     def apply_hubconfig(self, msg: dict[str, Any]) -> None:
         if msg.get("local", {}).get("key"):
             self.local_key = msg["local"]["key"]
+            self.local_key_from_server = True
         if msg.get("sms", {}).get("key"):
             self.sms_key = msg["sms"]["key"]
             self.sms_counter = 0

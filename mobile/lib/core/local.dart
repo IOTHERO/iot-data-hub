@@ -13,18 +13,19 @@ import 'discover_stub.dart' if (dart.library.io) 'discover_io.dart';
 import 'store.dart';
 
 class LocalKey {
-  LocalKey(this.deviceId, this.key, this.localAddr, this.port);
+  LocalKey(this.deviceId, this.key, this.localAddr, this.port, [this.viaHub]);
 
-  factory LocalKey.fromJson(Map<String, dynamic> j) => LocalKey(
-      j['device_id'] as String, j['key'] as String, j['local_addr'] as String?, (j['port'] as int?) ?? 8080);
+  factory LocalKey.fromJson(Map<String, dynamic> j) => LocalKey(j['device_id'] as String,
+      j['key'] as String, j['local_addr'] as String?, (j['port'] as int?) ?? 8080, j['via_hub'] as String?);
 
   final String deviceId;
   final String key;
   final String? localAddr;
   final int port;
+  final String? viaHub;          // behind a central hub (ESP32): also reachable through it
 
   Map<String, dynamic> toJson() =>
-      {'device_id': deviceId, 'key': key, 'local_addr': localAddr, 'port': port};
+      {'device_id': deviceId, 'key': key, 'local_addr': localAddr, 'port': port, 'via_hub': viaHub};
 }
 
 /// base64url(HMAC-SHA256(key, lines)) exactly as hub.platform.local_sign.sign.
@@ -115,6 +116,14 @@ class LocalControl {
     final k = await keyOf(deviceId);
     if (k == null) return {'result': 'rejected_offline', 'local': true};
     final valueJson = json.encode(value);
+    // behind a central hub: the hub first (it is the module's server), then the module itself
+    final hub = k.viaHub == null ? null : await keyOf(k.viaHub!);
+    if (hub != null) {
+      final target = '$deviceId:$tag';
+      final h = await _signed(hub, '/local/v1/command', {'tag': target, 'value_json': valueJson},
+          ['command', target, valueJson]);
+      if (h != null && h['ok'] == true) return {'result': 'applied', 'value': value, 'local': true};
+    }
     final r = await _signed(k, '/local/v1/command', {'tag': tag, 'value_json': valueJson},
         ['command', tag, valueJson]);
     if (r != null && r['ok'] == true) return {'result': 'applied', 'value': r['value'], 'local': true};
@@ -127,6 +136,13 @@ class LocalControl {
     for (final k in await keys()) {
       final r = await _signed(k, '/local/v1/state', {}, ['state']);
       if (r != null && r['values'] is Map) out[k.deviceId] = Map<String, dynamic>.from(r['values'] as Map);
+      if (r != null && r['modules'] is List) {           // a central hub: its modules' values
+        for (final m in (r['modules'] as List).whereType<Map>()) {
+          if (m['id'] is String && m['values'] is Map) {
+            out.putIfAbsent(m['id'] as String, () => Map<String, dynamic>.from(m['values'] as Map));
+          }
+        }
+      }
     }
     return out;
   }

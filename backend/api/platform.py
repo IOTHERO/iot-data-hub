@@ -9,6 +9,7 @@ organization's product or device answers like an unknown one (404).
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from functools import cache
 from typing import Annotated, Any, Literal
@@ -752,6 +753,52 @@ async def my_device_commands(device_id: str, svc: ServicesDep, p: Viewer,
     if not orgs or device_id not in await svc.store.accounts.access_levels(orgs, [device_id]):
         raise NotFound("device not found")
     return await svc.store.commands.for_device(device_id, limit)
+
+
+@router.get("/my/devices/{device_id}/hub")
+async def my_hub_status(device_id: str, svc: ServicesDep, p: Viewer) -> dict[str, Any]:
+    """A central hub's link (backend.hub_relay): online state, the modules it relays now, its
+    active alarms and the scenes it ran (also while cut off). For a module: which hub it is
+    behind now, or null (standalone)."""
+    orgs = {g.org_id for g in p.grants if g.org_id and "device.view" in
+            p.role_permissions.get(g.role_id, frozenset())}
+    if not orgs or device_id not in await svc.store.accounts.access_levels(orgs, [device_id]):
+        raise NotFound("device not found")
+    relay = svc.ingest.relay
+    return relay.summary(device_id) | {"behind_hub": relay.route(device_id)}
+
+
+class HubScenesIn(BaseModel):
+    """The hub's own scenes (contract: docs/fa/platform/esp32-hub-for-opc-server.md section 4);
+    the hub checks them in full and keeps what it had if they do not fit."""
+    scenes: list[dict[str, Any]] = Field(max_length=24)
+
+
+@router.put("/my/devices/{device_id}/hub/scenes")
+async def put_hub_scenes(device_id: str, body: HubScenesIn, svc: ServicesDep, p: Sharer,
+                         request: Request) -> dict[str, Any]:
+    """The owner replaces the scenes of a central hub. The hub runs them, with or without the
+    internet; the server does not run them as well."""
+    await svc.claims._owner(p, device_id)
+    if len(json.dumps(body.scenes)) > 8192:
+        raise Invalid("the hub holds at most 8 KB of scenes", code="too_large")
+    try:
+        await svc.ingest.relay.scenes(device_id, body.scenes)
+    except ConnectionError:
+        raise Conflict("the hub is not connected", code="hub_offline") from None
+    await svc.store.add_auth_audit("platform_device_updated", p.username, user_id=p.user_id,
+                                   client_addr=client_addr(request),
+                                   detail={"device_id": device_id, "changed": ["hub_scenes"],
+                                           "by": "owner"})
+    return {"scenes": len(body.scenes)}
+
+
+@router.post("/my/devices/{device_id}/hub/scenes/{scene_id}/run", status_code=202)
+async def run_hub_scene(device_id: str, scene_id: str, svc: ServicesDep, p: Sharer) -> None:
+    await svc.claims._owner(p, device_id)
+    if not svc.ingest.relay.hub_online(device_id):
+        raise Conflict("the hub is not connected", code="hub_offline")
+    await svc.ingest.relay.run_scene(device_id, scene_id[:32])
 
 
 class Point(BaseModel):

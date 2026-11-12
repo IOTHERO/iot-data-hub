@@ -998,5 +998,16 @@
     "order_help": "Hold an item by its handle and move it.",
     "none_chosen": "Nothing chosen yet.",
     "pick": "Pick from scenes and modules"
+  },
+  "hub": {
+    "title": "Central hub",
+    "behind": "Connected through the building's central hub",
+    "modules": "Modules online",
+    "address": "Address on the building network",
+    "alarms": "Hub alarms",
+    "scenes": "Hub scenes",
+    "scene_log": "What the hub ran",
+    "scene_sent": "Sent to the hub",
+    "help": "The hub keeps the building running with no internet: its scenes run on the hub, the phone controls through it on the home network."
   }
 }

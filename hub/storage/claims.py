@@ -167,6 +167,21 @@ class ClaimStore:
                 "SELECT * FROM unnest(%s::text[], %s::text[], %s::int[])",
                 (list(hashes), list(hashes.values()), [created_by] * len(hashes)))
 
+    async def hub_registry(self, owner_org: str, hub_id: str) -> list[dict[str, Any]]:
+        """The devices a central hub may let in (backend.hub_relay): the other running devices
+        its owner organization owns, with the SHA-256 of their active secret (the hub never
+        gets the secret itself) and their identifier."""
+        async with self._conn() as conn:
+            rows = await (await conn.execute(
+                "SELECT pd.device_id, pd.identifier, c.secret_hash "
+                "FROM device_access a JOIN platform_devices pd USING (device_id) "
+                "JOIN device_credentials c ON c.device_id = pd.device_id AND c.revoked_at IS NULL "
+                "WHERE a.org_id=%s AND a.level='owner' AND a.revoked_at IS NULL "
+                "AND pd.device_id <> %s AND pd.retired_at IS NULL AND pd.lifecycle <> 'disabled' "
+                "AND pd.parent_device_id IS NULL ORDER BY pd.identifier",
+                (owner_org, hub_id))).fetchall()
+        return [dict(r) for r in rows]
+
     async def credential_valid(self, device_id: str, secret_hash: str) -> bool:
         async with self._conn() as conn:
             row = await (await conn.execute(

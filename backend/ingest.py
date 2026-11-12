@@ -59,6 +59,8 @@ class Ingest:
         # how each device last reached the hub: a device allowed every transport but running
         # HTTP firmware must get its commands in the HTTP queue, not on a broker it never reads
         self.seen_via: dict[str, str] = {}
+        from backend.hub_relay import HubRelay
+        self.relay = HubRelay(self)                  # modules behind a central hub
         self._limit_logged: dict[str, float] = {}
 
     # --- authentication -----------------------------------------------------------------------
@@ -139,6 +141,7 @@ class Ingest:
         """A credential was rotated or the device removed: sign in again."""
         for key in [k for k in self._auth if k[0] == device_id]:
             del self._auth[key]
+        self.relay.forget(device_id)
 
     # --- device -> hub ------------------------------------------------------------------------
 
@@ -214,9 +217,13 @@ class Ingest:
         driver = self.driver(device_id)
         transports = driver.device.connection.transports if driver else ["http"]
         session = self.tcp.get(device_id)
+        hub_id = self.relay.route(device_id)
         if session is not None and "tcp" in transports:
             await session(message)
             transport = "tcp"
+        elif hub_id is not None:
+            await self.relay.to_module(hub_id, device_id, "ota", message)
+            transport = "hub"
         elif self._use_mqtt(device_id, transports):
             await self.mqtt.publish(f"d/{device_id}/ota", message)
             transport = "mqtt"
@@ -238,6 +245,10 @@ class Ingest:
         if session is not None and "tcp" in transports:
             await session(message)
             return "tcp"
+        hub_id = self.relay.route(device_id)
+        if hub_id is not None:
+            await self.relay.to_module(hub_id, device_id, message["type"], message)
+            return "hub"
         if self._use_mqtt(device_id, transports):
             await self.mqtt.publish(f"d/{device_id}/{message['type']}", message)
             return "mqtt"
@@ -274,9 +285,13 @@ class Ingest:
         message = command | {"expires_at": expires.isoformat()}
         transports = device.connection.transports
         session = self.tcp.get(device.device_id)
+        hub_id = self.relay.route(device.device_id)
         if session is not None and "tcp" in transports:
             await session({"type": "command", **message})
             transport = "tcp"
+        elif hub_id is not None:                     # behind a central hub
+            await self.relay.to_module(hub_id, device.device_id, "cmd", message)
+            transport = "hub"
         elif self._use_mqtt(device.device_id, transports):
             await self.mqtt.publish_command(device.device_id, message)
             transport = "mqtt"

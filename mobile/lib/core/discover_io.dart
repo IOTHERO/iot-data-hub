@@ -8,8 +8,9 @@ Future<Map<String, String>> discoverDevices(bool Function(String host) allowed) 
   final client = MDnsClient();
   try {
     await client.start();
-    const service = '_titiswitch._tcp.local';
     const wait = Duration(seconds: 2);
+    // devices (_titiswitch) and central hubs (_titihub, TXT id=<hub_id>)
+    for (final service in const ['_titiswitch._tcp.local', '_titihub._tcp.local'])
     await for (final ptr in client.lookup<PtrResourceRecord>(
         ResourceRecordQuery.serverPointer(service), timeout: wait)) {
       String? id;

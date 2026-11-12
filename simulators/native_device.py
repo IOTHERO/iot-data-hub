@@ -436,8 +436,11 @@ class NativeDeviceSim:
             pumping = asyncio.create_task(pump())
             try:
                 async for message in client.messages:
+                    topic = str(message.topic)
+                    if not topic.startswith(base + "/"):      # a test broker may hand out
+                        continue                              # retained messages of others
                     command = json.loads(message.payload)
-                    if str(message.topic).rsplit("/", 1)[-1] in ("rules", "config"):
+                    if topic.rsplit("/", 1)[-1] in ("rules", "config"):
                         self.receive(command)
                         continue
                     for reply in self.handle(command):

@@ -728,3 +728,19 @@ time (offline / read errors per device) are kept in `collection_errors` for 90 d
   `python -m hub.storage.migrate --rollback 0008_building_model` (only the most recent migration,
   one transaction; refused while calculated devices, organization grants or the
   setpoint_operator role are in use). Earlier migrations: restore the pre-upgrade backup.
+
+## 34. Modules behind an ESP32 central hub (standalone or via a hub)
+
+A platform device (e.g. DEVICE 8DO) reaches the server either **standalone** (`d/<id>/...` on the
+platform broker) or **behind a central hub** (`firmware/esp32-hub`), which signs in as one device
+and carries its modules' messages: `h/<hub>/state|up|alarm|scene_log` up, `h/<hub>/down` down
+(contract: `docs/fa/platform/esp32-hub-for-opc-server.md`). `backend/hub_relay.py`:
+
+- the broker ACL lets a device use its own `h/<id>/` topics too; MqttIngest subscribes `h/+/...`;
+- a hub may relay a module only when both have the same owner organization (cached 60 s);
+- commands, rules, config and firmware offers take the path the module was last heard on
+  (`transport` = `hub` in the command record); a hub going offline marks its modules offline;
+- a hub that comes online gets `{"type": "time"}`; its alarms and scene log are kept in memory,
+  `GET /api/platform/my/devices/<id>/hub` shows them (and, for a module, `behind_hub`).
+
+Test: `tests/api/test_hub_relay.py` (real broker, hub model `simulators/esp_hub.py`, native module).

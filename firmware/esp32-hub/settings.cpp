@@ -309,15 +309,20 @@ String registryJson(bool withSecrets) {
     o["id"] = m.id;
     o["name"] = m.name;
     o["alias"] = m.alias;
-    if (withSecrets) o["secret"] = m.secret;
-    else o["secretSet"] = m.secret.length() > 0;
+    if (m.rtu) o["rtu"] = m.rtu;
+    if (withSecrets) {
+      if (m.secret.length()) o["secret"] = m.secret;
+      if (m.secretHash.length()) o["secret_sha256"] = m.secretHash;
+    } else {
+      o["secretSet"] = m.secret.length() > 0 || m.secretHash.length() > 0;
+    }
   }
   String out;
   serializeJson(d, out);
   return out;
 }
 
-String registryApply(const String &json) {
+String registryApply(const String &json, bool keepLocalRtu) {
   JsonDocument d;
   if (deserializeJson(d, json) || !d.is<JsonArray>()) return "json";
   std::vector<Module> next;
@@ -327,7 +332,13 @@ String registryApply(const String &json) {
     m.id = o["id"] | "";
     m.name = o["name"] | "";
     m.alias = o["alias"] | "";
+    int rtu = o["rtu"] | 0;
+    if (rtu < 0 || rtu > 247) return "rtu";
+    m.rtu = (uint8_t)rtu;
     String secret = o["secret"] | "";
+    String hash = o["secret_sha256"] | "";
+    hash.toLowerCase();
+    if (hash.length() && hash.length() != 64) return "secret_sha256";
     if (!validId(m.id)) return "id";
     if (m.name.length() > 31) return "name";
     if (m.alias.length() && !validAlias(m.alias)) return "alias";
@@ -338,13 +349,27 @@ String registryApply(const String &json) {
       Module keep = *old;
       keep.name = m.name;
       keep.alias = m.alias;
-      if (secret.length()) keep.secret = secret;
+      if (o["rtu"].is<int>() || !keepLocalRtu) keep.rtu = m.rtu;     // the server does not know rtu
+      if (secret.length()) { keep.secret = secret; keep.secretHash = ""; }
+      else if (hash.length()) { keep.secretHash = hash; keep.secret = ""; }
       m = keep;
     } else {
       m.secret = secret;
+      m.secretHash = secret.length() ? "" : hash;
     }
-    if (!m.secret.length() || m.secret.length() > 64) return "secret";
+    // a bus module (rtu) needs no secret: it never signs in, the hub asks it
+    if ((!m.secret.length() && !m.secretHash.length() && !m.rtu) || m.secret.length() > 64) return "secret";
+    for (auto &x : next)
+      if (m.rtu && x.rtu == m.rtu) return "rtu duplicate";
     next.push_back(m);
+  }
+  if (keepLocalRtu) {                                    // RS-485 modules the server does not list stay
+    for (auto &old : modules) {
+      if (!old.rtu) continue;
+      bool listed = false;
+      for (auto &x : next) listed |= x.id == old.id;
+      if (!listed && next.size() < MAX_MODULES) next.push_back(old);
+    }
   }
   modules = next;
   return "";

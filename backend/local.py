@@ -76,6 +76,13 @@ class LocalControl:
         return await self.rotate(await self.store.home.org_device_ids(org_id), reason, actor)
 
     async def _push(self, device_id: str, row: dict[str, Any]) -> None:
+        relay = self.svc.ingest.relay
+        if relay.hub_online(device_id):          # a central hub takes its key in hubconfig
+            try:
+                await relay.send_hubconfig(device_id, self.config(row))
+            except Exception:  # noqa: BLE001 - sent again when the hub comes back
+                log.warning("local key of hub %s not pushed now", device_id)
+            return
         try:
             await self.svc.ingest.send_message(device_id, {"type": "config",
                                                            "local": self.config(row)})

@@ -79,6 +79,8 @@ class MqttIngest:
                     self.client = client
                     for kind in ("telemetry", "state", "ack", "ota/status", "pairing", "local_log"):
                         await client.subscribe(f"{self.shared}{self.prefix}d/+/{kind}", qos=1)
+                    for kind in ("state", "up", "alarm", "scene_log", "ack"):    # central hubs
+                        await client.subscribe(f"{self.shared}{self.prefix}h/+/{kind}", qos=1)
                     self.connected = True
                     delay = 1.0
                     log.info("platform MQTT ingest connected to %s:%d", self.broker.host,
@@ -99,6 +101,18 @@ class MqttIngest:
         self.counters["messages"] += 1
         rest = topic.removeprefix(self.prefix)
         parts = rest.split("/")
+        if len(parts) == 3 and parts[0] == "h":            # a central hub (backend.hub_relay)
+            try:
+                if not isinstance(payload, bytes | bytearray) or len(payload) > MAX_PAYLOAD:
+                    raise ValueError("payload too large")
+                await self.ingest.relay.message(parts[1], parts[2], json.loads(payload))
+            except (ValueError, TypeError) as exc:
+                self.counters["dropped"] += 1
+                log.info("platform MQTT: hub message from %s refused: %s", parts[1], exc)
+            except Exception:                    # one bad message must not stop the ingest
+                self.counters["dropped"] += 1
+                log.exception("platform MQTT: hub message from %s failed", parts[1])
+            return
         if len(parts) not in (3, 4) or parts[0] != "d":
             return
         device_id, kind = parts[1], "/".join(parts[2:])
@@ -142,8 +156,14 @@ class MqttIngest:
 
 def acl_allows(device_id: str, topic: str, action: str, prefix: str = "") -> bool:
     """A device may publish its telemetry / state / ack / pairing and subscribe to its commands,
-    firmware offers, local rules and settings only."""
+    firmware offers, local rules and settings only; a central hub also its own h/<id>/ topics."""
     own = f"{prefix}d/{device_id}/"
+    hub = f"{prefix}h/{device_id}/"                 # the same device as a central hub
+    if action == "publish" and topic in (hub + "state", hub + "up", hub + "alarm",
+                                         hub + "scene_log", hub + "ack"):
+        return True
+    if action == "subscribe" and topic == hub + "down":
+        return True
     if action == "publish":
         return topic in (own + "telemetry", own + "state", own + "ack", own + "ota/status",
                          own + "pairing", own + "local_log")

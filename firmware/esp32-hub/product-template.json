@@ -1,0 +1,59 @@
+{
+  "tags": [
+    {
+      "key": "modules_online",
+      "kind": "variable",
+      "display_name": {
+        "fa": "ماژول‌های آنلاین",
+        "en": "Modules online"
+      },
+      "data_type": "uint16",
+      "ui": {
+        "order": 1,
+        "chart": true
+      }
+    },
+    {
+      "key": "modules_total",
+      "kind": "variable",
+      "display_name": {
+        "fa": "همهٔ ماژول‌ها",
+        "en": "Modules"
+      },
+      "data_type": "uint16",
+      "ui": {
+        "order": 2,
+        "chart": false
+      }
+    },
+    {
+      "key": "alarms_active",
+      "kind": "variable",
+      "display_name": {
+        "fa": "هشدارهای فعال",
+        "en": "Active alarms"
+      },
+      "data_type": "uint16",
+      "ui": {
+        "order": 3,
+        "chart": true
+      }
+    }
+  ],
+  "bindings": {
+    "native": {
+      "connection": {
+        "transports": [
+          "mqtt"
+        ],
+        "stale_after_s": 300,
+        "command_timeout_s": 30
+      },
+      "tags": {
+        "modules_online": {},
+        "modules_total": {},
+        "alarms_active": {}
+      }
+    }
+  }
+}

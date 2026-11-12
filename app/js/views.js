@@ -583,6 +583,8 @@ export function device(state, id, focus = null) {
           icon("next")));
       }
     }
+    const hubBox = await hubCard(id, d.access === "owner");   // a central hub, or a module behind one
+    if (hubBox) control.unshift(hubBox);
     if (!rf) rf = remotesBox(id, operate);
     control.push(rf);
     const settable = params.filter((x) => !x.ui?.role?.startsWith("rf_"));
@@ -639,6 +641,41 @@ export function device(state, id, focus = null) {
   };
   state.timer = setInterval(() => { if (!document.hidden) draw(); }, 30000);
   return page;
+}
+
+/** A central hub (ESP32): its link, the modules behind it, its alarms, its scenes (run one) and
+ * what they did; for a module behind a hub, one line saying so. Null for anything else. */
+async function hubCard(id, owner) {
+  let s;
+  try { s = await api("GET", `/api/platform/my/devices/${id}/hub`); } catch { return null; }
+  if (s.state === "unknown") {
+    return s.behind_hub ? h("div", { class: "card tight row" }, h("span", { class: "ico" }, icon("relay")),
+      h("span", { class: "small" }, t("hub.behind"))) : null;
+  }
+  const scenes = (s.scenes || []).map((sc) => {
+    const run = h("button", { class: "chip", disabled: !owner || s.state !== "online" }, icon("power"), sc.name || sc.id);
+    run.addEventListener("click", busy(run, async () => {
+      await api("POST", `/api/platform/my/devices/${id}/hub/scenes/${encodeURIComponent(sc.id)}/run`);
+      toast(t("hub.scene_sent"), "ok");
+    }));
+    return run;
+  });
+  return h("section", { class: "card stack" },
+    h("div", { class: "row between" }, h("h2", { class: "h2" }, t("hub.title")),
+      h("span", { class: `chip ${s.state === "online" ? "ok" : "warn"}` }, h("span", { class: "dot" }),
+        t(s.state === "online" ? "device.online" : "device.offline"))),
+    h("div", { class: "reading" }, h("span", { class: "muted" }, t("hub.modules")),
+      h("b", {}, num(s.online_count ?? s.modules.length), " / ", num(s.module_count ?? s.modules.length))),
+    s.local_addr ? h("div", { class: "reading" }, h("span", { class: "muted" }, t("hub.address")),
+      h("b", { class: "ltr" }, s.local_addr)) : null,
+    s.alarms.length ? h("div", { class: "stack tight" }, h("span", { class: "label" }, t("hub.alarms")),
+      s.alarms.map((a) => h("div", { class: "row small warn-text" }, icon("alert"), a.text || a.code))) : null,
+    scenes.length ? h("div", { class: "stack tight" }, h("span", { class: "label" }, t("hub.scenes")),
+      h("div", { class: "row wrap" }, scenes)) : null,
+    s.scene_log.length ? h("div", { class: "stack tight" }, h("span", { class: "label" }, t("hub.scene_log")),
+      s.scene_log.slice(-5).reverse().map((e) => h("div", { class: "row between small" },
+        h("span", {}, e.scene || "—"), h("span", { class: "muted" }, e.at ? when(e.at) : "")))) : null,
+    h("p", { class: "tiny muted lh" }, t("hub.help")));
 }
 
 /** A sticky row of the page's sections: a touch scrolls to one; the one on screen lights up. */
