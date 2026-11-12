@@ -137,6 +137,11 @@ class Settings(BaseModel):
     spool_max_mb: int = Field(default=1024, ge=10, le=1_000_000)
     # self-service accounts (platform phase 2): off by default; invitations work regardless
     signup_enabled: bool = False
+    # the first administrator, made on the first start of an empty database (backend/bootstrap.py)
+    bootstrap_admin_username: str = "admin"
+    bootstrap_admin_password: str | None = None
+    bootstrap_maker_org: str = Field(default="titiswitch", pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    bootstrap_maker_name: str = "TiTiSwitch"
     public_url: str | None = None               # base of the links in e-mails
     smtp_host: str | None = None                # unset: e-mails are not sent (logged only)
     smtp_port: int = Field(default=587, ge=1, le=65535)
@@ -339,6 +344,10 @@ class Settings(BaseModel):
             spool_dir=_spool_dir(e.get("HUB_SPOOL_DIR")),
             spool_max_mb=int(e.get("HUB_SPOOL_MAX_MB", 1024)),
             signup_enabled=_bool(e.get("HUB_SIGNUP_ENABLED"), False),
+            bootstrap_admin_username=e.get("HUB_BOOTSTRAP_ADMIN_USER") or "admin",
+            bootstrap_admin_password=e.get("HUB_BOOTSTRAP_ADMIN_PASSWORD") or None,
+            bootstrap_maker_org=e.get("HUB_BOOTSTRAP_MAKER_ORG") or "titiswitch",
+            bootstrap_maker_name=e.get("HUB_BOOTSTRAP_MAKER_NAME") or "TiTiSwitch",
             public_url=(e.get("HUB_PUBLIC_URL") or "").rstrip("/") or None,
             smtp_host=e.get("HUB_SMTP_HOST") or None,
             smtp_port=int(e.get("HUB_SMTP_PORT", 587)),
