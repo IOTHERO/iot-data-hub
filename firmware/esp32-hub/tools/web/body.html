@@ -1,0 +1,243 @@
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+@@SYMBOLS@@
+<symbol id="i-mod" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M7 4l13 8-13 8z"/></symbol>
+<symbol id="i-gsm" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 20V14M9 20V10M14 20V6M19 20V3"/></symbol>
+</svg>
+
+<section id="login">
+  <div class="lbox">
+    <div class="logo"><svg><use href="#i-logo"/></svg></div>
+    <p class="tsw">TiTiSwitch</p>
+    <h1><span class="gold">TiTi Hub</span></h1>
+    <p data-t="loginSub"></p>
+    <label class="f"><span data-t="adminPass"></span>
+      <div class="pw"><input class="in ltr" id="lpass" type="password" autocomplete="current-password">
+      <button class="eye" type="button" data-eye="lpass"><svg width="18" height="18"><use href="#i-eye"/></svg></button></div></label>
+    <button class="btn pri" style="width:100%" id="lbtn" data-t="signIn"></button>
+    <p id="lerr" style="color:var(--bad);margin:12px 0 0"></p>
+    <div style="margin-top:18px"><button class="btn sm" data-lang></button></div>
+  </div>
+</section>
+
+<div id="app" class="hide">
+  <aside>
+    <div class="brand"><div class="logo"><svg><use href="#i-logo"/></svg></div><div><b id="bname">TiTi Hub</b><small id="bfw"></small></div></div>
+    <div id="navs"></div>
+    <div class="side-foot">
+      <button class="btn sm" data-lang></button>
+      <button class="btn sm red" data-restart><svg><use href="#i-re"/></svg><span data-t="restart"></span></button>
+    </div>
+  </aside>
+  <main>
+    <header>
+      <h2 id="ptitle"></h2>
+      <span class="chip"><span class="dot" id="livedot"></span><span id="livetx"></span></span>
+      <span class="chip"><span class="dot" id="cfgdot"></span><span data-t="cfgSwitch"></span>: <b id="cfgtx"></b></span>
+    </header>
+
+    <!-- DASHBOARD -->
+    <section class="page" id="p-dash">
+      <div id="alerts"></div>
+      <div class="grid g2" style="margin-bottom:16px">
+        <div class="card hero">
+          <h3 data-t="hub"></h3>
+          <div class="big gold" id="dname"></div>
+          <div style="color:var(--mut);margin-top:6px" id="dmode"></div>
+          <div class="bar" style="margin-top:16px"><span class="chip" id="dfw"></span><span class="chip" id="daddr"></span><span class="chip" id="did"></span></div>
+        </div>
+        <div class="card">
+          <h3 data-t="links"></h3>
+          <div class="links" id="linkbox"></div>
+        </div>
+      </div>
+      <div class="grid g4">
+        <div class="card stat"><div class="k" data-t="modOnline"></div><div class="v" id="smo">-</div></div>
+        <div class="card stat"><div class="k" data-t="clock"></div><div class="v" id="stm" style="font-size:18px">-</div></div>
+        <div class="card stat"><div class="k" data-t="uptime"></div><div class="v" id="sup">-</div></div>
+        <div class="card stat"><div class="k" data-t="heap"></div><div class="v" id="shp">-</div></div>
+        <div class="card stat"><div class="k" data-t="rtcTemp"></div><div class="v" id="srt">-</div></div>
+        <div class="card stat"><div class="k" data-t="resetReason"></div><div class="v" id="srr" style="font-size:16px">-</div></div>
+        <div class="card stat"><div class="k" data-t="sceneCount"></div><div class="v" id="ssc">-</div></div>
+        <div class="card stat"><div class="k" data-t="enrollment"></div><div class="v" id="sen" style="font-size:16px">-</div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3><span data-t="alarms"></span><small><button class="btn sm" id="ackBtn" data-t="ack"></button></small></h3>
+        <div id="alarmList"></div>
+      </div>
+    </section>
+
+    <!-- MODULES -->
+    <section class="page" id="p-mods">
+      <div class="bar" style="margin-bottom:16px">
+        <button class="btn pri" id="enrollBtn"></button>
+        <span style="color:var(--mut);font-size:12.5px" data-t="enrollSub"></span>
+      </div>
+      <div id="modList"></div>
+      <div class="card" style="margin-top:16px">
+        <h3 data-t="registry"></h3>
+        <p class="sub" data-t="registrySub"></p>
+        <div class="tblwrap"><table>
+          <thead><tr><th data-t="modId"></th><th data-t="modSecret"></th><th data-t="name"></th><th data-t="alias"></th><th></th></tr></thead>
+          <tbody id="regBody"></tbody></table></div>
+        <div class="bar" style="margin-top:14px"><button class="btn sm" id="regAdd" data-t="addModule"></button><button class="btn pri sm" id="regSave" data-t="save"></button></div>
+      </div>
+    </section>
+
+    <!-- SCENES -->
+    <section class="page" id="p-scenes">
+      <div class="card" style="margin-bottom:16px">
+        <h3><span data-t="scenes"></span><small data-t="scenesSub"></small></h3>
+        <div id="sceneList"></div>
+      </div>
+      <div class="card">
+        <h3 data-t="sceneEditor"></h3>
+        <p class="sub" data-t="sceneHelp"></p>
+        <div class="bar" style="margin-bottom:10px">
+          <select class="in" id="tplSel" style="max-width:260px"></select>
+          <button class="btn sm" id="tplAdd" data-t="addTemplate"></button>
+        </div>
+        <textarea class="in" id="sceneJson" rows="14" spellcheck="false"></textarea>
+        <div class="bar" style="margin-top:12px"><button class="btn pri" id="sceneSave" data-t="saveScenes"></button><span id="sceneMsg" style="color:var(--mut)"></span></div>
+      </div>
+    </section>
+
+    <!-- CONNECTION -->
+    <section class="page" id="p-conn">
+      <div class="grid g2">
+        <div class="card">
+          <h3 data-t="lan"></h3>
+          <label class="f"><span data-t="netMode"></span><select class="in" data-k="net.mode" data-num>
+            <option value="0" data-t="nm0"></option><option value="1" data-t="nm1"></option><option value="2" data-t="nm2"></option><option value="3" data-t="nm3"></option></select></label>
+          <label class="tg"><span data-t="dhcp"></span><input type="checkbox" data-k="net.ethDhcp"><i></i></label>
+          <div class="row">
+            <label class="f"><span>IP</span><input class="in ltr" data-k="net.ethIp" maxlength="15"></label>
+            <label class="f"><span data-t="subnet"></span><input class="in ltr" data-k="net.ethMask" maxlength="15"></label>
+            <label class="f"><span data-t="gateway"></span><input class="in ltr" data-k="net.ethGw" maxlength="15"></label>
+            <label class="f"><span>DNS</span><input class="in ltr" data-k="net.ethDns" maxlength="15"></label>
+          </div>
+          <label class="f"><span data-t="hostname"></span><input class="in ltr" data-k="net.hostname" maxlength="23"></label>
+        </div>
+        <div class="card">
+          <h3 data-t="wifiNet"></h3>
+          <div class="bar" style="margin-bottom:10px"><button class="btn sm" id="scanBtn" data-t="scan"></button></div>
+          <div class="nets" id="nets"></div>
+          <label class="f"><span data-t="ssid"></span><input class="in ltr" data-k="net.wifiSsid" maxlength="32"></label>
+          <label class="f"><span data-t="password"></span><input class="in ltr" type="password" data-k="net.wifiPass" data-secret="net.wifiPassSet" maxlength="63" autocomplete="new-password"></label>
+          <label class="f"><span data-t="backupNet"></span><input class="in ltr" data-k="net.wifiSsid2" maxlength="32"></label>
+          <label class="f"><span data-t="password"></span><input class="in ltr" type="password" data-k="net.wifiPass2" data-secret="net.wifiPass2Set" maxlength="63" autocomplete="new-password"></label>
+        </div>
+        <div class="card">
+          <h3 data-t="server"></h3>
+          <p class="sub" data-t="serverSub"></p>
+          <label class="tg"><span data-t="srvEnabled"></span><input type="checkbox" data-k="cloud.enabled"><i></i></label>
+          <label class="f"><span data-t="hubId"></span><input class="in ltr" data-k="id.hubId" maxlength="32"></label>
+          <label class="f"><span data-t="hubSecret"></span><input class="in ltr" type="password" data-k="id.hubSecret" data-secret="id.hubSecretSet" maxlength="64" autocomplete="new-password"></label>
+          <label class="tg"><span data-t="tls"></span><input type="checkbox" data-k="cloud.tls"><i></i></label>
+          <label class="f"><span data-t="caPem"></span><textarea class="in" rows="3" data-k="cloud.ca" data-secret="cloud.caSet" spellcheck="false"></textarea></label>
+          <div class="bar" style="margin-bottom:12px"><button class="btn sm" id="caClear" data-t="clearCa"></button></div>
+          <div class="row">
+            <label class="f"><span data-t="host"></span><input class="in ltr" data-k="cloud.host" maxlength="63"></label>
+            <label class="f"><span data-t="port"></span><input class="in ltr" type="number" data-k="cloud.port" data-num></label>
+            <label class="f"><span data-t="prefix"></span><input class="in ltr" data-k="cloud.prefix" maxlength="15"></label>
+            <label class="f"><span data-t="keepalive"></span><input class="in ltr" type="number" data-k="cloud.keepalive" data-num></label>
+          </div>
+          <label class="f"><span data-t="lostAlarm"></span><input class="in ltr" type="number" data-k="cloud.lostAlarmS" data-num></label>
+        </div>
+        <div class="card">
+          <h3 data-t="modBroker"></h3>
+          <p class="sub" data-t="modBrokerSub"></p>
+          <div class="row">
+            <label class="f"><span data-t="port"></span><input class="in ltr" type="number" data-k="modules.brokerPort" data-num></label>
+            <label class="f"><span data-t="offlineS"></span><input class="in ltr" type="number" data-k="modules.offlineS" data-num></label>
+          </div>
+          <h3 style="margin-top:18px" data-t="phoneApi"></h3>
+          <p class="sub" data-t="phoneApiSub"></p>
+          <label class="tg"><span data-t="localEnabled"></span><input type="checkbox" data-k="local.enabled"><i></i></label>
+          <label class="f"><span data-t="port"></span><input class="in ltr" type="number" data-k="local.port" data-num></label>
+          <div class="bar"><button class="btn sm" id="keyShow" data-t="showKeys"></button><button class="btn sm red" id="keyNew" data-t="newKey"></button></div>
+          <div class="keybox hide" id="keyBox" style="margin-top:12px"></div>
+          <h3 style="margin-top:18px" data-t="ntp"></h3>
+          <label class="f"><span data-t="ntp"></span><input class="in ltr" data-k="net.ntp" maxlength="39"></label>
+          <label class="f"><span data-t="utcOffset"></span><input class="in ltr" type="number" data-k="net.utcOffsetMin" data-num></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- GSM AND CLOCK -->
+    <section class="page" id="p-gsm">
+      <div class="grid g2">
+        <div class="card">
+          <h3><span data-t="gsm"></span><small id="gsmState"></small></h3>
+          <label class="tg"><span data-t="gsmEnabled"></span><input type="checkbox" data-k="gsm.enabled"><i></i></label>
+          <label class="f"><span>APN</span><input class="in ltr" data-k="gsm.apn" maxlength="31"></label>
+          <label class="f"><span data-t="simPin"></span><input class="in ltr" type="password" data-k="gsm.simPin" data-secret="gsm.simPinSet" maxlength="8" autocomplete="new-password"></label>
+          <label class="tg"><span data-t="smsEnabled"></span><input type="checkbox" data-k="gsm.smsEnabled"><i></i></label>
+          <p class="sub" data-t="smsHelp"></p>
+        </div>
+        <div class="card">
+          <h3 data-t="contacts"></h3>
+          <p class="sub" data-t="contactsSub"></p>
+          <div class="tblwrap"><table>
+            <thead><tr><th data-t="name"></th><th data-t="phone"></th><th data-t="cmds"></th><th data-t="alarmsShort"></th><th></th></tr></thead>
+            <tbody id="ctBody"></tbody></table></div>
+          <div class="bar" style="margin-top:14px"><button class="btn sm" id="ctAdd" data-t="addContact"></button></div>
+        </div>
+        <div class="card">
+          <h3 data-t="clock"></h3>
+          <div class="kv">
+            <span data-t="time"></span><b id="ckTime">—</b>
+            <span data-t="source"></span><b id="ckSrc">—</b>
+            <span data-t="rtc"></span><b id="ckRtc">—</b>
+          </div>
+          <div class="bar" style="margin-top:14px"><button class="btn" id="setTime" data-t="setFromDevice"></button></div>
+          <p class="sub" style="margin-top:12px" data-t="clockHelp"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SYSTEM -->
+    <section class="page" id="p-sys">
+      <div class="grid g2">
+        <div class="card">
+          <h3 data-t="general"></h3>
+          <label class="f"><span data-t="devName"></span><input class="in" data-k="deviceName" maxlength="31"></label>
+          <label class="f"><span data-t="newAdmin"></span><input class="in ltr" type="password" data-k="system.adminPass" data-secret="system.adminPassSet" maxlength="32" autocomplete="new-password"></label>
+          <label class="f"><span data-t="apPass"></span><input class="in ltr" type="password" data-k="system.apPass" data-secret="system.apPassSet" maxlength="63" autocomplete="new-password"></label>
+          <label class="f"><span data-t="logLevel"></span><select class="in" data-k="system.logLevel" data-num>
+            <option value="0" data-t="lvE"></option><option value="1" data-t="lvW"></option><option value="2" data-t="lvI"></option><option value="3" data-t="lvD"></option></select></label>
+        </div>
+        <div class="card">
+          <h3><span data-t="firmware"></span><small id="fwv"></small></h3>
+          <p class="sub" data-t="otaSub"></p>
+          <input type="file" id="otaFile" accept=".bin" class="in">
+          <label class="tg"><span data-t="otaFs"></span><input type="checkbox" id="otaFs"><i></i></label>
+          <div class="prog"><i id="otaBar"></i></div>
+          <div class="bar" style="margin-top:12px"><button class="btn pri" id="otaBtn" data-t="upload"></button><span id="otaTx" style="color:var(--mut)"></span></div>
+          <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+          <h3 data-t="backup"></h3>
+          <div class="bar">
+            <button class="btn" id="bkBtn" data-t="download"></button>
+            <label class="btn"><span data-t="restore"></span><input type="file" id="rsFile" accept=".json" class="hide"></label>
+            <button class="btn red" id="facBtn" data-t="factory"></button>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3><span data-t="liveLog"></span><small><button class="btn sm" id="logPause" data-t="pause"></button> <button class="btn sm" id="logClear" data-t="clear"></button></small></h3>
+        <div class="log" id="log"></div>
+      </div>
+    </section>
+  </main>
+  <nav class="dock" id="dock"></nav>
+</div>
+
+<div class="savebar" id="savebar"><span data-t="unsaved"></span><button class="btn sm" id="discard" data-t="discard"></button><button class="btn pri sm" id="save" data-t="save"></button></div>
+<div id="toasts"></div>
+<div id="modal"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
