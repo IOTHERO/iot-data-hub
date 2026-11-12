@@ -1,0 +1,8 @@
+# Name,   Type, SubType, Offset,   Size,     Flags
+# 64 KB NVS: settings, module registry and scenes live here (they survive a firmware or web UI update)
+nvs,      data, nvs,     0x9000,   0x10000,
+otadata,  data, ota,     0x19000,  0x2000,
+app0,     app,  ota_0,   0x20000,  0x1B0000,
+app1,     app,  ota_1,   0x1D0000, 0x1B0000,
+# 512 KB LittleFS: the web UI only (data/), written alone with flash-web or the portal
+spiffs,   data, spiffs,  0x380000, 0x80000,
