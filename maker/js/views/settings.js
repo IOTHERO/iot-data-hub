@@ -168,7 +168,7 @@ async function billing(org) {
   return h("section", { class: "card pad" }, h("div", { class: "row between wrap" }, h("span", { class: "h3" }, t("billing.title")),
     h("span", { class: "chip accent" }, t("billing.plan_x", { x: b.plan.name }))),
   h("div", { class: "tiles" },
-    h("div", { class: "tile" }, h("span", { class: "label" }, t("billing.active")), h("span", { class: "value" }, num(b.active_devices))),
+    h("a", { class: "tile", href: "#/production//active" }, h("span", { class: "label" }, t("billing.active")), h("span", { class: "value" }, num(b.active_devices))),
     h("div", { class: "tile hot" }, h("span", { class: "label" }, t("billing.this_month", { p: num(b.current.period) })),
       h("span", { class: "value" }, rial(b.current.amount)))),
   b.over_limit ? h("div", { class: "note warn" }, t("billing.over_limit", { n: num(b.plan.max_devices) })) : null,

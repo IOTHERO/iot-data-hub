@@ -48,7 +48,7 @@ def test_acl_lets_a_hub_use_its_own_topics_only() -> None:
 
 async def test_module_behind_the_hub_then_standalone(backend: Backend) -> None:
     b = backend
-    _, sara, _, module_id, module_secret = await owned_device(b, transports=["mqtt"])
+    maker, sara, _, module_id, module_secret = await owned_device(b, transports=["mqtt"])
     hub_id, hub_secret = await _hub_of(b, sara)
     relay_tag = f"platform.devices.{module_id}.relay_3"
     async with EmbeddedBroker() as broker:
@@ -67,6 +67,20 @@ async def test_module_behind_the_hub_then_standalone(backend: Backend) -> None:
                 await b.wait(lambda: relay_tag in b.services.hub.latest)
                 relay = b.services.ingest.relay
                 assert relay.route(module_id) == hub_id
+                # the maker panel's "online" card: the devices connected now
+                async def online_ids() -> list[str]:
+                    r = await b.client.get("/api/platform/devices?online=true",
+                                           headers=maker["alice"])
+                    return [d["device_id"] for d in r.json()["devices"]]
+
+                for _ in range(50):                   # the status is written in a batch
+                    if module_id in await online_ids():
+                        break
+                    await asyncio.sleep(0.1)
+                assert module_id in await online_ids()
+                quiet = (await b.client.get("/api/platform/devices?quiet_days=3",
+                                            headers=maker["alice"])).json()
+                assert module_id not in [d["device_id"] for d in quiet["devices"]]  # it talks
                 # the server told the hub the time, which devices may sign in (by the SHA-256
                 # of their secret, never the secret) and the key for the phones
                 await b.wait(lambda: hub.registry and hub.server_time

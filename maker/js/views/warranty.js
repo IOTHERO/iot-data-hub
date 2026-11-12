@@ -1,7 +1,7 @@
 // Warranty: which activated devices are covered, which end soon, look a device up.
 
 import { api, busy, date, h, num, t } from "../core.js";
-import { lifecycleChip, pageHead, products, tile, warrantyText } from "../ui.js";
+import { lifecycleChip, pageHead, products, select, tile, warrantyText } from "../ui.js";
 
 const DAY = 86400000;
 
@@ -31,11 +31,10 @@ export default async function warranty() {
   const [devices, list] = await Promise.all([activeDevices(), products()]);
   const names = new Map(list.map((p) => [p.product_id, p.name]));
   const now = Date.now();
-  const counts = { covered: 0, soon: 0, expired: 0, none: 0 };
-  for (const d of devices) {
-    const s = status(d, now);
-    if (s in counts) counts[s] += 1;
-  }
+  const productSel = select([["", t("warranty.all_products")], ...list.map((p) => [p.product_id, p.name])],
+    { "aria-label": t("production.product") });
+  const tableSearch = h("input", { class: "search", type: "search", dir: "ltr",
+    placeholder: t("production.search"), "aria-label": t("production.search") });
   const query = h("input", { class: "search", type: "search", placeholder: t("warranty.lookup_placeholder"),
     "aria-label": t("warranty.lookup"), dir: "ltr" });
   const result = h("div", { class: "stack" });
@@ -65,9 +64,15 @@ export default async function warranty() {
   const tilesBox = h("div", { class: "tiles" });
   const chips = h("div", { class: "filters" });
   const tbody = h("tbody");
+  const total = h("span", { class: "small muted" });
+  productSel.addEventListener("change", () => draw());
+  tableSearch.addEventListener("input", () => draw());
   const FILTERS = [["attention", "soon_expired"], ["covered", "covered"], ["soon", "soon"],
     ["expired", "expired"], ["none", "none"], ["not_started", "not_started"], ["all", "all"]];
   const matches = (d) => {
+    if (productSel.value && d.product_id !== productSel.value) return false;
+    const q = tableSearch.value.trim().toUpperCase();
+    if (q && !d.identifier.toUpperCase().includes(q) && !(d.serial_number || "").toUpperCase().includes(q)) return false;
     const s = status(d, now);
     if (pick === "all") return true;
     if (pick === "attention") return s === "soon" || s === "expired";
@@ -76,13 +81,23 @@ export default async function warranty() {
   };
   const byEnd = (a, b) => new Date(a.warranty_until || 0) - new Date(b.warranty_until || 0);
   function draw() {
-    const shown = devices.filter(matches).sort(byEnd).slice(0, 200);
+    const counts = { covered: 0, soon: 0, expired: 0, none: 0, not_started: 0 };
+    for (const d of devices) {
+      if (productSel.value && d.product_id !== productSel.value) continue;
+      const s = status(d, now);
+      if (s in counts) counts[s] += 1;
+    }
+    const all = devices.filter(matches);
+    const shown = all.sort(byEnd).slice(0, 200);
+    total.textContent = t("warranty.shown", { n: num(shown.length), total: num(all.length) });
     const open = (key) => () => { pick = key; draw(); };
     tilesBox.replaceChildren(
       tile(t("warranty.covered"), num(counts.covered + counts.soon), "teal", null, open("covered"), pick === "covered"),
       tile(t("warranty.soon"), num(counts.soon), counts.soon ? "orange" : "", null, open("soon"), pick === "soon"),
       tile(t("warranty.expired"), num(counts.expired), "", null, open("expired"), pick === "expired"),
-      tile(t("warranty.no_warranty"), num(counts.none), "", null, open("none"), pick === "none"));
+      tile(t("warranty.no_warranty"), num(counts.none), "", null, open("none"), pick === "none"),
+      tile(t("warranty.f_not_started"), num(counts.not_started), "", null, open("not_started"),
+        pick === "not_started"));
     chips.replaceChildren(...FILTERS.map(([key, label]) => h("button", {
       class: `filter ${pick === key ? "on" : ""}`, onclick: open(key) }, t(`warranty.f_${label}`))));
     tbody.replaceChildren(...(shown.length ? shown.map((d) => {
@@ -102,7 +117,8 @@ export default async function warranty() {
     tilesBox,
     h("div", { class: "columns" },
       h("section", { class: "card col-main" },
-        h("div", { class: "bar" }, h("span", { class: "h3" }, t("warranty.ending")), chips),
+        h("div", { class: "bar" }, h("span", { class: "h3" }, t("warranty.ending")), total),
+        h("div", { class: "bar" }, productSel, tableSearch, chips),
         h("div", { class: "scroll" }, h("table", { class: "grid mid" },
           h("thead", {}, h("tr", {}, ["id", "product", "activated", "until", "status"].map((c) =>
             h("th", {}, t(`warranty.col_${c}`))))),

@@ -516,9 +516,24 @@ class PlatformStore:
 
     async def devices(self, orgs: set[str] | None, *, product_id: UUID | None = None,
                       lifecycle: str | None = None, search: str | None = None,
-                      batch: str | None = None, limit: int = 100, offset: int = 0
+                      batch: str | None = None, online: bool | None = None,
+                      quiet_days: int | None = None, limit: int = 100, offset: int = 0
                       ) -> tuple[list[PlatformDeviceRecord], int]:
         where, params = ["pd.retired_at IS NULL"], []
+        if online is not None:                   # connected now (the dashboard's "online" card)
+            async with self._tx(None) as conn:
+                live = [r["device_id"] for r in await (await conn.execute(
+                    "SELECT device_id FROM device_status WHERE state='online'")).fetchall()]
+            where.append("pd.device_id = ANY(%s)" if online else "NOT (pd.device_id = ANY(%s))")
+            params.append(live)
+        if quiet_days is not None:               # activated but not heard for that long (faulty)
+            since = datetime.now(UTC) - timedelta(days=quiet_days)
+            async with self._tx(None) as conn:
+                heard = [r["device_id"] for r in await (await conn.execute(
+                    "SELECT device_id FROM device_status WHERE state='online' OR "
+                    "last_seen >= %s", (since,))).fetchall()]
+            where.append("pd.lifecycle = 'active' AND NOT (pd.device_id = ANY(%s))")
+            params.append(heard)
         if product_id is not None:
             where.append("pd.product_id = %s")
             params.append(product_id)

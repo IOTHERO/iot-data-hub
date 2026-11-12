@@ -426,12 +426,16 @@ async def list_devices(svc: ServicesDep, p: Reader, product: UUID | None = None,
                        lifecycle: Lifecycle | None = None,
                        q: Annotated[str | None, Query(max_length=64)] = None,
                        batch: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
+                       online: bool | None = None,
+                       quiet_days: Annotated[int | None, Query(ge=1, le=365)] = None,
                        limit: Annotated[int, Query(ge=1, le=500)] = 100,
                        offset: Annotated[int, Query(ge=0)] = 0) -> DevicePage:
-    """``lifecycle=stock``: not with a buyer yet (registered or ready)."""
+    """``lifecycle=stock``: not with a buyer yet (registered or ready); ``online=true``:
+    connected now; ``quiet_days=3``: activated but not heard for 3 days (the dashboard's
+    "faulty" card)."""
     rows, total = await svc.store.platform.devices(
         _orgs(p, "product.read"), product_id=product, lifecycle=lifecycle, search=q,
-        batch=batch, limit=limit, offset=offset)
+        batch=batch, online=online, quiet_days=quiet_days, limit=limit, offset=offset)
     return DevicePage(total=total, devices=rows)
 
 

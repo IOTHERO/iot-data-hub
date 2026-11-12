@@ -6,7 +6,7 @@ import { can, checkbox, connection, ctx, field, identifierAt, input, lifecycleCh
 import { issueLabels, labelCard } from "./labels.js";
 
 const FILTERS = [["", "all"], ["stock", "ready"], ["sold", "sold"], ["active", "active"],
-  ["disabled", "disabled"]];
+  ["disabled", "disabled"], ["online", "online"], ["faulty", "faulty"]];
 
 export default async function production(args) {
   const list = (await products(true)).filter((p) => p.org_id === ctx.org.org_id);
@@ -170,7 +170,13 @@ export default async function production(args) {
   }
 
   // --- devices --------------------------------------------------------------------------------
+  const names = new Map(list.map((p) => [p.product_id, p.name]));
   let filter = FILTERS.some(([v]) => v === args[1]) ? args[1] : "";
+  // from a dashboard card (#/production//<filter>): every product; else the chosen one
+  const scope = select([["one", t("production.scope_one", { name: product.name })],
+    ["all", t("production.scope_all")]], { value: args.length > 1 && !args[0] ? "all" : "one",
+    "aria-label": t("production.scope") });
+  scope.addEventListener("change", () => { offset = 0; drawDevices(); });
   let offset = 0;
   const limit = 50;
   const search = h("input", { class: "search", type: "search", placeholder: t("production.search"),
@@ -181,21 +187,25 @@ export default async function production(args) {
   async function drawDevices() {
     filters.replaceChildren(...FILTERS.map(([value, key]) => h("button", { class: `filter ${filter === value ? "on" : ""}`,
       onclick: () => { filter = value; offset = 0; drawDevices(); } }, t(`filter.${key}`))));
-    const q = new URLSearchParams({ product: product.product_id, limit, offset });
-    if (filter) q.set("lifecycle", filter);
+    const q = new URLSearchParams({ limit, offset });
+    if (scope.value === "one") q.set("product", product.product_id);
+    if (filter === "online") q.set("online", "true");
+    else if (filter === "faulty") q.set("quiet_days", "3");
+    else if (filter) q.set("lifecycle", filter);
     if (search.value.trim()) q.set("q", search.value.trim());
     const page = await api("GET", `/api/platform/devices?${q}`);
     tbody.replaceChildren(...(page.devices.length ? page.devices.map((d) => {
       const [conn, cls] = connection(d);
       return h("tr", { class: "click", onclick: () => { location.hash = `#/device/${d.device_id}`; } },
         h("td", { class: "id ltr" }, d.identifier),
+        h("td", { class: "sub" }, names.get(d.product_id) || d.product_code || "—"),
         h("td", { class: "mono-sub ltr" }, d.serial_number || "—"),
         h("td", {}, lifecycleChip(d.lifecycle)),
         h("td", { class: cls }, conn),
         h("td", { class: "sub ltr" }, d.firmware_version || "—"),
         h("td", { class: "sub" }, warrantyText(d)),
         h("td", { class: "muted" }, ownership(d)));
-    }) : [h("tr", {}, h("td", { colspan: 7, class: "muted" }, t("production.no_devices")))]));
+    }) : [h("tr", {}, h("td", { colspan: 8, class: "muted" }, t("production.no_devices")))]));
     pagerBox.replaceChildren(pager(page.total, offset, limit, (o) => { offset = o; drawDevices(); }));
   }
   let searchTimer = null;
@@ -216,9 +226,15 @@ export default async function production(args) {
       tile(label, num(n), kind, null, () => {
         filter = value; offset = 0;
         drawTiles();
+  // from a dashboard card: straight to the list it opened
+  if (args.length > 1) setTimeout(() => tableCard.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
         drawDevices().then(() => tableCard.scrollIntoView({ behavior: "smooth", block: "start" }));
       }, filter === value)),
-    tile(t("stage.online"), num(stats.online), "teal"));
+    tile(t("stage.online"), num(stats.online), "teal", null, () => {
+      filter = "online"; offset = 0;
+      drawTiles();
+      drawDevices().then(() => tableCard.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }, filter === "online"));
   drawTiles();
 
   const sample = labelCard(product, identifierAt(product.identifier_pattern, Number(start.value) || 1),
@@ -238,9 +254,9 @@ export default async function production(args) {
       h("div", { class: "col-main" },
         (tableCard.replaceChildren(
           h("div", { class: "bar" }, h("label", { class: "sr", for: "dev-search" }, t("production.search")),
-            Object.assign(search, { id: "dev-search" }), filters),
+            Object.assign(search, { id: "dev-search" }), scope, filters),
           h("div", { class: "scroll" }, h("table", { class: "grid mid" },
-            h("thead", {}, h("tr", {}, ["id", "serial", "status", "conn", "fw", "warranty", "owner"]
+            h("thead", {}, h("tr", {}, ["id", "product", "serial", "status", "conn", "fw", "warranty", "owner"]
               .map((c) => h("th", {}, t(`production.col_${c}`))))), tbody)),
           pagerBox,
           h("div", { class: "foot-note" }, t("production.privacy"))), tableCard),

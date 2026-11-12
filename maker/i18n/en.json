@@ -99,7 +99,9 @@
     "ready": "Ready to ship",
     "sold": "Sold",
     "active": "Active",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "online": "Online now",
+    "faulty": "Silent 3+ days"
   },
   "conn": {
     "online": "Online",
@@ -128,7 +130,21 @@
     "step_1": "Set the details and the identifier pattern.",
     "step_2": "Define inputs, outputs and parameters (e.g. 8 relays).",
     "step_3": "Set the protocols and each parameter's address, then publish the version.",
-    "step_4": "Register devices in batches and print the QR labels."
+    "step_4": "Register devices in batches and print the QR labels.",
+    "k_all": "All products",
+    "k_published": "Published",
+    "k_unpublished": "Not published",
+    "k_draft": "With a draft",
+    "k_hub": "Central hubs",
+    "k_catalog": "In the catalog",
+    "k_with_devices": "With devices",
+    "k_devices": "Devices registered",
+    "all_categories": "All categories",
+    "category": "Category",
+    "sort": "Sort",
+    "sort_name": "By name",
+    "sort_devices": "Most devices",
+    "sort_code": "By code"
   },
   "product": {
     "name": "Product name",
@@ -474,7 +490,11 @@
     "stage_confirm": "Move every device of batch {batch} to “{stage}”? Devices a buyer activated keep their stage.",
     "stage_done": "{n} devices moved",
     "stage_help": "E.g. mark a batch “sold” once it is shipped to the dealer.",
-    "export_list": "List as CSV"
+    "export_list": "List as CSV",
+    "scope": "Which products",
+    "scope_one": "Only {name}",
+    "scope_all": "All products",
+    "col_product": "Product"
   },
   "labels": {
     "subtitle": "One-time activation codes, QR and the production-line file",
@@ -574,7 +594,9 @@
     "f_expired": "Expired",
     "f_none": "No warranty",
     "f_not_started": "Not started",
-    "f_all": "All"
+    "f_all": "All",
+    "all_products": "All products",
+    "shown": "{n} shown of {total}"
   },
   "support": {
     "subtitle": "Look a device up by identifier or serial and solve its problem",
